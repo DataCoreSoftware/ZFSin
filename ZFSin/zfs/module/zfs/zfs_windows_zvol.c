@@ -650,12 +650,12 @@ wzvol_HwStartIo(
 		break;
 
 	case SRB_FUNCTION_RESET_LOGICAL_UNIT:
-		bFlag = wzvol_reset_notification(pSrb);
+		bFlag = wzvol_reset_lun_notification(pSrb);
 		srbStatus = TRUE == bFlag ? SRB_STATUS_SUCCESS : SRB_STATUS_INVALID_REQUEST;
 		break;
 
 	case SRB_FUNCTION_RESET_DEVICE:
-		bFlag = wzvol_reset_notification(pSrb);
+		bFlag = wzvol_reset_device_notification(pSrb);
 		srbStatus = TRUE == bFlag ? SRB_STATUS_SUCCESS : SRB_STATUS_INVALID_REQUEST;
 		break;
 
