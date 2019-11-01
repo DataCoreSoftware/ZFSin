@@ -4754,8 +4754,9 @@ dispatcher(
 {
 	BOOLEAN TopLevel = FALSE;
 	PIO_STACK_LOCATION IrpSp;
-	NTSTATUS Status;
+	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	uint64_t validity_check;
+	mount_t *zmo;
 
 	// Storport can call itself (and hence, ourselves) so this isn't always true.
 	//PAGED_CODE();
@@ -4774,6 +4775,23 @@ dispatcher(
 	}
 #endif
 	validity_check = *((uint64_t *)Irp);
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
+
+	zmo = DeviceObject->DeviceExtension;
+
+	extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
+
+	if (DeviceObject != ioctlDeviceObject) {
+		if (zmo == NULL || ((zmo->type != MOUNT_TYPE_DCB) && (zmo->type != MOUNT_TYPE_VCB))) {
+			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
+				//dprintf("Relaying IRP to STORport\n");
+				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
+			}
+		}
+	}
 
 	FsRtlEnterFileSystem();
 
@@ -4782,38 +4800,24 @@ dispatcher(
 		TopLevel = TRUE;
 	}
 
-	IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
-
-	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
-		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
-
-	Status = STATUS_NOT_IMPLEMENTED;
-
 	if (DeviceObject == ioctlDeviceObject)
 		Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
 	else {
-		mount_t *zmo = DeviceObject->DeviceExtension;
 		if (zmo && zmo->type == MOUNT_TYPE_DCB)
 			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
 		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
 			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
 		else {
 
-			extern PDRIVER_UNLOAD STOR_DriverUnload;
-			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				if (TopLevel) { IoSetTopLevelIrp(NULL); }
-				FsRtlExitFileSystem();
-				//dprintf("Relaying IRP to STORport\n");
-				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
+				// We shuold never here.
+				ASSERT(FALSE);
 			}
 			// Got a request we don't care about?
 			Status = STATUS_INVALID_DEVICE_REQUEST;
 			Irp->IoStatus.Information = 0;
 		}
 	}
-
 
 	ASSERT(validity_check == *((uint64_t *)Irp));
 
