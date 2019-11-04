@@ -670,6 +670,53 @@ ScsiReadWriteSetup(
 	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiReadWriteSetup.
 
+extern VOID
+bzvol_ReadWriteWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+);
+
+UCHAR
+IrpReadWriteSetup(
+	void* zv,
+	PDEVICE_OBJECT      pDO,
+	PIRP				pIrp,
+	t_privatereadwrite* iobuf,
+	int                 action)
+{
+	pMP_WorkRtnParms             pWkRtnParms;
+	mount_t* zmo_bcb = pDO->DeviceExtension;
+
+	pWkRtnParms =                                     // Allocate parm area for work routine.
+		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
+
+	if (NULL == pWkRtnParms) {
+		dprintf("IrpReadWriteSetup Failed to allocate work parm structure\n");
+		return 0; // failed
+	}
+
+	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
+
+	pWkRtnParms->iobuf = iobuf;
+	pWkRtnParms->zv = zv;
+	pWkRtnParms->pIrp = pIrp;
+
+	pWkRtnParms->Action = (action == ZFS_BCB_READ ? ActionRead : ActionWrite);
+	pWkRtnParms->pQueueWorkItem = IoAllocateWorkItem(pDO);
+
+	if (NULL == pWkRtnParms->pQueueWorkItem) {
+		dprintf("IrpReadWriteSetup: Failed to allocate work item\n");
+		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+		return 0;
+	}
+
+	// Queue work item, which will run in the System process.
+
+	IoQueueWorkItem(pWkRtnParms->pQueueWorkItem, bzvol_ReadWriteWkRtn, DelayedWorkQueue, pWkRtnParms);
+
+	return 1; // queued up.
+}
+
 /**************************************************************************************************/     
 /*                                                                                                */     
 /**************************************************************************************************/     
@@ -847,3 +894,65 @@ wzvol_GeneralWkRtn(
 	wzvol_WkRtn(pWkParms);                                // Do the actual work.
 }                                                     // End MpGeneralWkRtn().
 
+VOID
+bzvol_ReadWriteWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	NTSTATUS Status;
+	pMP_WorkRtnParms        pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	t_privatereadwrite* iobuf = pWkRtnParms->iobuf;
+	int iores;
+
+	UNREFERENCED_PARAMETER(pDummy);
+
+	IoFreeWorkItem(pWkRtnParms->pQueueWorkItem);      // Free queue item.
+
+	pWkRtnParms->pQueueWorkItem = NULL;               // Be neat.
+
+	// If the next starts, it has to be stopped by a kernel debugger.
+	/*
+	while (pWkRtnParms->SecondsToDelay) {
+		LARGE_INTEGER delay;
+
+		delay.QuadPart = -10 * 1000 * 1000 * pWkRtnParms->SecondsToDelay;
+
+		KeDelayExecutionThread(KernelMode, TRUE, &delay);
+	}
+	*/
+	PUCHAR pDataBuffer = (PUCHAR)MmGetSystemAddressForMdlSafe(iobuf->mdl, NormalPagePriority);
+	if (!pDataBuffer) {
+		dprintf("BlockAccess I/O: failed to get system address.\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+	else {
+
+		/* Call ZFS to read/write data */
+		if (ActionRead == pWkRtnParms->Action) {
+			iores = zvol_read_win(pWkRtnParms->zv, iobuf->ByteOffset.QuadPart, iobuf->Length, pDataBuffer);
+		}
+		else {
+			iores = zvol_write_win(pWkRtnParms->zv, iobuf->ByteOffset.QuadPart, iobuf->Length, pDataBuffer);
+		}
+		if (iores == 0) {
+			//dprintf("BlockAccess I/O(%d) (offset/length=0x%x/%d) - done successfully.\n", pWkRtnParms->Action, iobuf->ByteOffset.QuadPart, iobuf->Length);
+			Status = STATUS_SUCCESS;
+		}
+		else {
+			dprintf("BlockAccess I/O(%d) (offset/length=0x%x/%d) - ERROR.\n", pWkRtnParms->Action, iobuf->ByteOffset.QuadPart, iobuf->Length);
+			Status = STATUS_UNSUCCESSFUL;
+		}
+	}
+
+	if (NT_SUCCESS(Status)) {
+		pWkRtnParms->pIrp->IoStatus.Information = iobuf->Length;
+	}
+	else {
+		pWkRtnParms->pIrp->IoStatus.Information = 0;
+
+	}
+	pWkRtnParms->pIrp->IoStatus.Status = Status;
+	IoCompleteRequest(pWkRtnParms->pIrp, IO_DISK_INCREMENT);
+	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+}

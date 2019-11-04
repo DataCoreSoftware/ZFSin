@@ -1838,7 +1838,7 @@ out:
  */
 NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp) 
 {
-	vnode_t *vp;
+	vnode_t *vp = NULL;
 	NTSTATUS Status = STATUS_UNSUCCESSFUL;
 
 	if (fo == NULL) {

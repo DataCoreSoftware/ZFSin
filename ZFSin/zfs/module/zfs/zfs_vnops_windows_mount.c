@@ -1367,3 +1367,101 @@ out_unlock:
 	}
 	return error;
 }
+
+
+// {42ef8b1a-c861-4d38-a9ac-baa8fea181d5}
+DEFINE_GUID(GUID_ZFS_ZVOL_DIRECT_INTERFACE_CLASS,
+	0x42ef8b1a, 0xc861, 0x4d38, 0xa9, 0xac, 0xba, 0xa8, 0xfe, 0xa1, 0x81, 0xd5);
+
+
+// ZVOL POC
+void* wzvol_CreateBlockAccessDevice(char* zvolname, void* zv)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+
+	PDEVICE_OBJECT pDeviceObject;
+
+	char* buffer;
+	char nameBuffer[128];
+
+	STRING ntNameString;
+	UNICODE_STRING deviceName;
+
+	buffer = strchr(zvolname, '/'); // extract only the zvolname portion (not the pool name).
+	if (buffer == 0)
+		return 0;
+	buffer += 1;
+	sprintf(nameBuffer, "\\Device\\%s", buffer);
+	RtlInitAnsiString(&ntNameString, nameBuffer);
+
+	// Create an inter-driver device name to access that device
+	status = RtlAnsiStringToUnicodeString(&deviceName, &ntNameString, TRUE);
+	if (!NT_SUCCESS(status)) {
+		dprintf("ERROR: wzvol_CreateBlockAccessDevice:IoCreateSymbolicLink returned 0x%x\n", status);
+		return 0;
+	}
+
+	status = IoCreateDevice(
+		WIN_DriverObject, // Driver Object
+		sizeof(mount_t), // DeviceExtensionSize
+		&deviceName,
+		FILE_DEVICE_DISK,			// Device type
+		0, // Device characteristics
+		FALSE,							// Exclusive device
+		&pDeviceObject);				// Pointer to Device object
+
+	if (!NT_SUCCESS(status)) {
+		RtlFreeUnicodeString(&deviceName);
+		return 0;
+	}
+
+	mount_t* zmo_bcb = pDeviceObject->DeviceExtension;
+	RtlZeroMemory(zmo_bcb, sizeof(mount_t));
+	zmo_bcb->size = sizeof(mount_t);
+	zmo_bcb->type = MOUNT_TYPE_BCB;
+	zmo_bcb->deviceObject = pDeviceObject;
+	zmo_bcb->fsprivate = zv;
+
+	/*
+	// Create an inter-driver symbolic link to access that device
+	status = RtlAnsiStringToUnicodeString(&zmo_bcb->symlink_name, &ntNameString, TRUE);
+	if (!NT_SUCCESS(status)) {
+		RtlFreeUnicodeString(&zmo_bcb->device_name);
+		IoDeleteDevice(pDeviceObject);				// Pointer to Device object
+		return 0;
+	}
+
+	status = IoCreateSymbolicLink(&zmo_bcb->symlink_name, &zmo_bcb->device_name);
+*/
+	if (!NT_SUCCESS(status)) {
+		dprintf("ERROR: wzvol_CreateBlockAccessDevice:IoCreateSymbolicLink2 returned 0x%x\n", status);
+		RtlFreeUnicodeString(&deviceName);
+		//RtlFreeUnicodeString(&zmo_bcb->symlink_name);
+		IoDeleteDevice(pDeviceObject);				// Pointer to Device object	
+		return 0;
+	}
+	else {
+		zmo_bcb->device_name.Buffer = deviceName.Buffer;
+		zmo_bcb->device_name.Length = deviceName.Length;
+		zmo_bcb->device_name.MaximumLength = deviceName.MaximumLength;
+		// Mark device as initialized
+		pDeviceObject->Flags |= DO_DIRECT_IO;
+		pDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+		//ObReferenceObject(pDeviceObject);
+		dprintf("wzvol_CreateBlockAccessDevice: created zvol direct access. Link: %S -> %S.\n", zmo_bcb->symlink_name.Buffer, zmo_bcb->device_name.Buffer);
+	}
+
+	return zmo_bcb;
+}
+
+void wzvol_DeleteBlockAccessDevice(mount_t* zmo_bcb)
+{
+	if (zmo_bcb->deviceObject) {
+		dprintf("wzvol_DeleteBlockAccessDevice: deleting zvol direct access. %S.\n", zmo_bcb->device_name.Buffer);
+		//IoDeleteSymbolicLink(&zmo_bcb->device_name);
+		//IoSetDeviceInterfaceState(&zmo_bcb->device_name, FALSE);
+		RtlFreeUnicodeString(&zmo_bcb->device_name);
+		//RtlFreeUnicodeString(&zmo_bcb->symlink_name);
+		IoDeleteDevice(zmo_bcb->deviceObject);
+	}
+}

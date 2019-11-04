@@ -96,6 +96,10 @@ dev_info_t *zfs_dip = &zfs_dip_real;
 extern int zfs_major;
 extern int zfs_bmajor;
 
+// ZVOL POC
+void* wzvol_CreateBlockAccessDevice(char* zvolname, void* zv);
+void wzvol_DeleteBlockAccessDevice(void* pDeviceObject);
+
 void wzvol_announce_buschange(void);
 int wzvol_assign_targetid(zvol_state_t *zv);
 void wzvol_clear_targetid(uint8_t targetid);
@@ -1044,6 +1048,13 @@ zvol_first_open(zvol_state_t *zv)
 	else
 		zv->zv_flags &= ~ZVOL_RDONLY;
 
+	mount_t* zmo_bcb = wzvol_CreateBlockAccessDevice(zv->zv_name, zv);
+	if (zmo_bcb)
+		zv->pBlockAccessDeviceExtension = zmo_bcb;
+	else {
+		zv->pBlockAccessDeviceExtension = NULL;
+		error = 1;
+	}
 
   out_owned:
 	if (error) {
@@ -1084,6 +1095,14 @@ zvol_last_close(zvol_state_t *zv)
 		dmu_objset_disown(zv->zv_objset, B_TRUE, zvol_tag);
 	}
 	zv->zv_objset = NULL;
+
+
+	// ZVOL POC
+	if (zv->pBlockAccessDeviceExtension) {
+		mount_t* zmo_bcb = (mount_t*)zv->pBlockAccessDeviceExtension;
+		zv->pBlockAccessDeviceExtension = NULL;
+		wzvol_DeleteBlockAccessDevice(zmo_bcb);
+	}
 }
 
 int

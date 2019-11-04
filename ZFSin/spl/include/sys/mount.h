@@ -78,6 +78,7 @@ typedef enum _FSD_IDENTIFIER_TYPE {
 	MOUNT_TYPE_VCB = ':VCB', // Volume Control Block
 	MOUNT_TYPE_FCB = ':FCB', // File Control Block
 	MOUNT_TYPE_CCB = ':CCB', // Context Control Block
+	MOUNT_TYPE_BCB = ':BCB', // Block Control Block: BlockAccess interface ZFS POC
 } FSD_IDENTIFIER_TYPE;
 
 

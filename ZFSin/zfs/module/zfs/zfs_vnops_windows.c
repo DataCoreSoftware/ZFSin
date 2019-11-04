@@ -1294,7 +1294,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename, &vap);
 
 
-
+/* $TLL: breaks compilation
 #if defined (NTDDI_WIN10_RS5) && (NTDDI_VERSION >= NTDDI_WIN10_RS5)
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
 	// This requires vnode_couplefileobject() was called
@@ -1310,7 +1310,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FsRtlAcknowledgeEcp(qocContext);
 	}
 #endif
-
+*/
 	// Now handle proper EAs properly
 	if (NT_SUCCESS(status)) {
 		if (Irp->AssociatedIrp.SystemBuffer &&
@@ -4632,6 +4632,321 @@ fsDispatcher(
 }
 
 /*
+ * This is the IOCTL handler for the "block access zvol".
+ */
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS
+blockDispatcher(
+	_In_ PDEVICE_OBJECT DeviceObject,
+	_Inout_ PIRP Irp,
+	PIO_STACK_LOCATION IrpSp
+)
+{
+	NTSTATUS Status;
+
+	//PAGED_CODE();
+	/*
+	dprintf("  %s: enter: major %d: minor %d: %s blockDeviceObject\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+		*/
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	switch (IrpSp->MajorFunction) {
+
+	case IRP_MJ_CREATE:
+		dprintf("IRP_MJ_CREATE: Block FileObject %p related %p name '%wZ' flags 0x%x\n",
+			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
+			IrpSp->FileObject->FileName, IrpSp->Flags);
+
+		Status = STATUS_SUCCESS;
+		break;
+	case IRP_MJ_CLOSE:
+		Status = STATUS_SUCCESS;
+		break;
+
+		extern int zvol_read_win(void* zv, uint64_t offset,
+			uint64_t count, void* iomem);
+
+		extern int zvol_write_win(void* zv, uint64_t offset,
+			uint64_t count, void* iomem);
+
+		typedef struct privatereadwrite {
+			ULONG Length;
+			ULONG POINTER_ALIGNMENT Key;
+			LARGE_INTEGER ByteOffset;
+			PMDL mdl;
+			PIRP pPoolIrp;
+		} t_privatereadwrite;
+
+		UCHAR IrpReadWriteSetup(void* zv, PDEVICE_OBJECT      pDO, PIRP				 pIrp, t_privatereadwrite * iobuf, int                 action);
+
+	case IRP_MJ_DEVICE_CONTROL:
+	{
+		u_long cmd = IrpSp->Parameters.DeviceIoControl.IoControlCode;
+		/* Not ZFS ioctl, handle Windows ones */
+		switch (cmd) {
+		case ZFS_BCB_READ:
+		{
+			t_privatereadwrite* iobuf = Irp->AssociatedIrp.SystemBuffer;
+			mount_t* zmo_bcb = DeviceObject->DeviceExtension;
+
+			IoMarkIrpPending(Irp);
+			if (IrpReadWriteSetup(zmo_bcb->fsprivate, DeviceObject, Irp, iobuf, ZFS_BCB_READ)) {
+				// Request queued.
+				Status = STATUS_PENDING;
+			}
+			else
+				Status = STATUS_UNSUCCESSFUL;
+		}
+		break;
+		case ZFS_BCB_WRITE:
+		{
+			t_privatereadwrite* iobuf = Irp->AssociatedIrp.SystemBuffer;
+			mount_t* zmo_bcb = DeviceObject->DeviceExtension;
+
+			IoMarkIrpPending(Irp);
+			if (IrpReadWriteSetup(zmo_bcb->fsprivate, DeviceObject, Irp, iobuf, ZFS_BCB_WRITE)) {
+				// Request queued.
+				Status = STATUS_PENDING;
+			}
+			else
+				Status = STATUS_UNSUCCESSFUL;
+		}
+		break;
+
+		case IOCTL_VOLUME_GET_GPT_ATTRIBUTES:
+			dprintf("IOCTL_VOLUME_GET_GPT_ATTRIBUTES\n");
+			Status = 0;
+			break;
+		case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
+			dprintf("IOCTL_MOUNTDEV_QUERY_DEVICE_NAME\n");
+			Status = ioctl_query_device_name(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_MOUNTDEV_QUERY_UNIQUE_ID:
+			dprintf("IOCTL_MOUNTDEV_QUERY_UNIQUE_ID\n");
+			Status = ioctl_query_unique_id(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
+			dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
+			Status = ioctl_mountdev_query_stable_guid(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
+			dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
+			Status = ioctl_mountdev_query_suggested_link_name(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_VOLUME_ONLINE:
+			dprintf("IOCTL_VOLUME_ONLINE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_VOLUME_OFFLINE:
+		case IOCTL_VOLUME_IS_OFFLINE:
+			dprintf("IOCTL_VOLUME_OFFLINE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_DISK_IS_WRITABLE:
+			dprintf("IOCTL_DISK_IS_WRITABLE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_DISK_MEDIA_REMOVAL:
+			dprintf("IOCTL_DISK_MEDIA_REMOVAL\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_STORAGE_MEDIA_REMOVAL:
+			dprintf("IOCTL_STORAGE_MEDIA_REMOVAL\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_VOLUME_POST_ONLINE:
+			dprintf("IOCTL_VOLUME_POST_ONLINE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_STORAGE_GET_HOTPLUG_INFO:
+			dprintf("IOCTL_STORAGE_GET_HOTPLUG_INFO\n");
+			Status = ioctl_storage_get_hotplug_info(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_QUERY_PROPERTY:
+			dprintf("IOCTL_STORAGE_QUERY_PROPERTY\n");
+			Status = ioctl_storage_query_property(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS:
+			dprintf("IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS\n");
+			Status = ioctl_volume_get_volume_disk_extents(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
+			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_DISK_CHECK_VERIFY:
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_STORAGE_CHECK_VERIFY2:
+			dprintf("IOCTL_STORAGE_CHECK_VERIFY2\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_VOLUME_IS_DYNAMIC:
+		{
+			uint8_t* buf = (UINT8*)Irp->AssociatedIrp.SystemBuffer;
+			*buf = 1;
+			Irp->IoStatus.Information = 1;
+			Status = STATUS_SUCCESS;
+			break;
+		}
+		case IOCTL_MOUNTDEV_LINK_CREATED:
+			dprintf("IOCTL_MOUNTDEV_LINK_CREATED\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case 0x4d0010: // Same as IOCTL_MOUNTDEV_LINK_CREATED but bit 14,15 are 0 (access permissions)
+			dprintf("IOCTL_MOUNTDEV_LINK_CREATED v2\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_MOUNTDEV_LINK_DELETED:
+			dprintf("IOCTL_MOUNTDEV_LINK_DELETED\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case 0x4d0014: // Same as IOCTL_MOUNTDEV_LINK_DELETED but bit 14,15 are 0 (access permissions)
+			dprintf("IOCTL_MOUNTDEV_LINK_DELETED v2\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_DISK_GET_PARTITION_INFO_EX:
+			dprintf("IOCTL_DISK_GET_PARTITION_INFO_EX\n");
+			Status = ioctl_disk_get_partition_info_ex(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_DISK_GET_DRIVE_GEOMETRY:
+			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY\n");
+			Status = ioctl_disk_get_drive_geometry(DeviceObject, Irp, IrpSp);
+			break;
+		default:
+			dprintf("**** unknown disk Windows IOCTL: 0x%lx\n", cmd);
+		}
+
+	}
+	break;
+
+	case IRP_MJ_CLEANUP:
+		Status = STATUS_SUCCESS;
+		break;
+
+
+		// Technically we don't really let them read from the virtual devices that
+		// hold the ZFS filesystem, so we just return all zeros.
+	case IRP_MJ_READ:
+	{
+		dprintf("BlockAccess read - faking it.\n");
+		mount_t* zmo_bcb = DeviceObject->DeviceExtension;
+		uint64_t bufferLength = IrpSp->Parameters.Read.Length;
+		LARGE_INTEGER offset = IrpSp->Parameters.Read.ByteOffset;
+		/*
+		PUCHAR pDataBuffer = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		if (!pDataBuffer) {
+			dprintf("BlockAccess ERROR: read failed to get system address.\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			break;
+		}
+		int iores = zvol_read_win(zmo_bcb->fsprivate, offset.QuadPart, bufferLength, pDataBuffer);
+		if (iores == 0) {
+			Irp->IoStatus.Information = bufferLength;
+			Status = STATUS_SUCCESS;
+		}
+		else {
+			dprintf("BlockAccess ERROR: read failed.\n");
+			Irp->IoStatus.Information = 0;
+			Status = STATUS_UNSUCCESSFUL;
+		}
+		*/
+		Irp->IoStatus.Information = bufferLength;
+		Status = STATUS_SUCCESS;
+	}
+	break;
+
+	case IRP_MJ_WRITE:
+	{
+		dprintf("BlockAccess write - faking it.\n");
+		mount_t* zmo_bcb = DeviceObject->DeviceExtension;
+		uint64_t bufferLength = IrpSp->Parameters.Read.Length;
+		LARGE_INTEGER offset = IrpSp->Parameters.Read.ByteOffset;
+		/*
+		PUCHAR pDataBuffer = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+		if (!pDataBuffer) {
+			dprintf("BlockAccess ERROR: write failed to get system address.\n");
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			break;
+		}
+		int iores = zvol_write_win(zmo_bcb->fsprivate, offset.QuadPart, bufferLength, pDataBuffer);
+		if (iores == 0) {
+			Irp->IoStatus.Information = bufferLength;
+			Status = STATUS_SUCCESS;
+		}
+		else {
+			dprintf("BlockAccess ERROR: write failed.\n");
+			Irp->IoStatus.Information = 0;
+			Status = STATUS_UNSUCCESSFUL;
+		}
+		*/
+		Irp->IoStatus.Information = bufferLength;
+		Status = STATUS_SUCCESS;
+	}
+	break;
+
+	case IRP_MJ_FILE_SYSTEM_CONTROL:
+		switch (IrpSp->MinorFunction) {
+		case IRP_MN_MOUNT_VOLUME:
+			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
+			//Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_USER_FS_REQUEST:
+			dprintf("IRP_MN_USER_FS_REQUEST: FsControlCode 0x%x\n",
+				IrpSp->Parameters.FileSystemControl.FsControlCode);
+			//Status = user_fs_request(DeviceObject, Irp, IrpSp);
+			break;
+		}
+		break;
+
+	case IRP_MJ_QUERY_INFORMATION:
+		dprintf("volume calling query_information warning\n");
+		//Status = query_information(DeviceObject, Irp, IrpSp);
+		break;
+
+	case IRP_MJ_PNP:
+		switch (IrpSp->MinorFunction) {
+		case IRP_MN_QUERY_CAPABILITIES:
+			Status = QueryCapabilities(DeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_QUERY_DEVICE_RELATIONS:
+			Status = STATUS_NOT_IMPLEMENTED;
+			dprintf("DeviceRelations.Type 0x%x\n", IrpSp->Parameters.QueryDeviceRelations.Type);
+			break;
+		case IRP_MN_QUERY_ID:
+			Status = pnp_query_id(DeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_QUERY_PNP_DEVICE_STATE:
+			Status = pnp_device_state(DeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_QUERY_REMOVE_DEVICE:
+			dprintf("IRP_MN_QUERY_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_SURPRISE_REMOVAL:
+			dprintf("IRP_MN_SURPRISE_REMOVAL\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_REMOVE_DEVICE:
+			dprintf("IRP_MN_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_CANCEL_REMOVE_DEVICE:
+			dprintf("IRP_MN_CANCEL_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		}
+		break;
+
+	}
+
+	return Status;
+}
+
+
+/*
  * ALL ioctl requests come in here, and we do the Windows specific work to handle IRPs
  * then we sort out the type of request (ioctl, volume, filesystem) and call each
  * respective handler.
@@ -4686,6 +5001,8 @@ dispatcher(
 		mount_t * zmo = DeviceObject->DeviceExtension;
 		if (zmo && zmo->type == MOUNT_TYPE_DCB)
 			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
+		else if (zmo && zmo->type == MOUNT_TYPE_BCB)
+			Status = blockDispatcher(DeviceObject, Irp, IrpSp);
 		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
 			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
 		else {

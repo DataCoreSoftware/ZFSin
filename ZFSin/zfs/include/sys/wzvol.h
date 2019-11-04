@@ -197,6 +197,15 @@ typedef enum {
 	ActionWrite
 } MpWkRtnAction;
 
+/* ZFS POC */
+typedef struct privatereadwrite {
+	ULONG Length;
+	ULONG POINTER_ALIGNMENT Key;
+	LARGE_INTEGER ByteOffset;
+	PMDL mdl;
+	PIRP pPoolIrp;
+} t_privatereadwrite;
+
 typedef struct _MP_WorkRtnParms {
 	pHW_HBA_EXT          pHBAExt;
 	pHW_LU_EXTENSION     pLUExt;
@@ -205,6 +214,10 @@ typedef struct _MP_WorkRtnParms {
 	PEPROCESS            pReqProcess;
 	MpWkRtnAction        Action;
 	ULONG                SecondsToDelay;
+	/* ZFS POC */
+	t_privatereadwrite* iobuf;
+	void* zv;
+	PIRP pIrp;
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
 
 enum ResultType {
@@ -407,6 +420,16 @@ ScsiReadWriteSetup(
 	__in PSCSI_REQUEST_BLOCK  pSrb,
 	__in MpWkRtnAction        WkRtnAction,
 	__in PUCHAR               pResult
+);
+
+/* ZFS POC */
+UCHAR
+IrpReadWriteSetup(
+	void* zv,
+	PDEVICE_OBJECT      pDO,
+	PIRP				pIrp,
+	t_privatereadwrite* iobuf,
+	int                 action
 );
 
 VOID

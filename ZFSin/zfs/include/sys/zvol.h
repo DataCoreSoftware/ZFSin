@@ -76,6 +76,7 @@ typedef struct zvol_state {
 	/* 'rdiskX' name, use [1] for diskX */
 	uint8_t zv_target_id;
 	uint8_t zv_lun_id;
+	void* pBlockAccessDeviceExtension; // IoCreateDevice extension portion (mount_t) for the Z.(xxxxx)-000000X device
 } zvol_state_t;
 
 enum zfs_soft_state_type {
