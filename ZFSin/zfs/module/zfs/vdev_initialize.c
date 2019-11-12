@@ -36,7 +36,8 @@
 /*
  * Value that is written to disk during initialization.
  */
-uint64_t zfs_initialize_value = 0xdeadbeefdeadbeefULL;
+//uint64_t zfs_initialize_value = 0xdeadbeefdeadbeefULL;
+uint64_t zfs_initialize_value = 0x0ULL;
 
 /* maximum number of I/Os outstanding per leaf vdev */
 int zfs_initialize_limit = 1;

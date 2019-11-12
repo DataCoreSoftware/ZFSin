@@ -110,7 +110,7 @@ uint64_t zfs_trim_extent_bytes_min = 32 * 1024;
  * usefulness of this option.  This setting is stored when starting a
  * manual TRIM and will persist for the duration of the requested TRIM.
  */
-uint64_t zfs_trim_metaslab_skip = 0;
+uint64_t zfs_trim_metaslab_skip = 1;
 
 /*
  * Maximum number of queued TRIM I/Os per leaf vdev.  The number of
