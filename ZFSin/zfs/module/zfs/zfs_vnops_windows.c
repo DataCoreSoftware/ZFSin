@@ -4784,50 +4784,45 @@ dispatcher(
 
 	extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
-	if (DeviceObject != ioctlDeviceObject) {
-		if (zmo == NULL || ((zmo->type != MOUNT_TYPE_DCB) && (zmo->type != MOUNT_TYPE_VCB))) {
-			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				//dprintf("Relaying IRP to STORport\n");
-				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
-			}
+	if (DeviceObject != ioctlDeviceObject && (zmo == NULL || ((zmo->type != MOUNT_TYPE_DCB) && (zmo->type != MOUNT_TYPE_VCB)))) {
+		
+		if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
+			//dprintf("Relaying IRP to STORport\n");
+			return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 		}
+
+		// Got a request we don't care about?
+		Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Irp->IoStatus.Information = 0;
 	}
-
-	FsRtlEnterFileSystem();
-
-	if (IoGetTopLevelIrp() == NULL) {
-		IoSetTopLevelIrp(Irp);
-		TopLevel = TRUE;
-	}
-
-	if (DeviceObject == ioctlDeviceObject)
-		Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
 	else {
-		if (zmo && zmo->type == MOUNT_TYPE_DCB)
-			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
-		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
-			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
-		else {
 
-			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				// We shuold never here.
-				ASSERT(FALSE);
-			}
-			// Got a request we don't care about?
-			Status = STATUS_INVALID_DEVICE_REQUEST;
-			Irp->IoStatus.Information = 0;
+		FsRtlEnterFileSystem();
+
+		if (IoGetTopLevelIrp() == NULL) {
+			IoSetTopLevelIrp(Irp);
+			TopLevel = TRUE;
 		}
+
+		if (DeviceObject == ioctlDeviceObject)
+			Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
+		else {
+			if (zmo && zmo->type == MOUNT_TYPE_DCB)
+				Status = diskDispatcher(DeviceObject, Irp, IrpSp);
+			else if (zmo && zmo->type == MOUNT_TYPE_VCB)
+				Status = fsDispatcher(DeviceObject, Irp, IrpSp);
+		}
+
+		ASSERT(validity_check == *((uint64_t *)Irp));
+
+		// IOCTL_STORAGE_GET_HOTPLUG_INFO
+		// IOCTL_DISK_CHECK_VERIFY
+		// IOCTL_STORAGE_QUERY_PROPERTY
+		Irp->IoStatus.Status = Status;
+
+		if (TopLevel) { IoSetTopLevelIrp(NULL); }
+		FsRtlExitFileSystem();
 	}
-
-	ASSERT(validity_check == *((uint64_t *)Irp));
-
-	// IOCTL_STORAGE_GET_HOTPLUG_INFO
-	// IOCTL_DISK_CHECK_VERIFY
-	//IOCTL_STORAGE_QUERY_PROPERTY
-	Irp->IoStatus.Status = Status;
-
-	if (TopLevel) { IoSetTopLevelIrp(NULL); }
-	FsRtlExitFileSystem();
 
 	switch (Status) {
 	case STATUS_SUCCESS:
@@ -4846,7 +4841,6 @@ dispatcher(
 		IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	return Status;
 }
-
 
 NTSTATUS ZFSCallbackAcquireForCreateSection(
 	IN PFS_FILTER_CALLBACK_DATA CallbackData,
