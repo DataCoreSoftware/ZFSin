@@ -279,7 +279,12 @@ wzvol_HwAdapterControl(
 );
 
 BOOLEAN
-wzvol_reset_notification(
+wzvol_reset_device_notification(
+	__in PSCSI_REQUEST_BLOCK  pSrb
+);
+
+BOOLEAN
+wzvol_reset_lun_notification(
 	__in PSCSI_REQUEST_BLOCK  pSrb
 );
 
