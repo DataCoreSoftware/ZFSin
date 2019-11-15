@@ -4785,14 +4785,14 @@ dispatcher(
 	extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 	if (DeviceObject != ioctlDeviceObject && (zmo == NULL || ((zmo->type != MOUNT_TYPE_DCB) && (zmo->type != MOUNT_TYPE_VCB)))) {
-		
+
 		if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
 			//dprintf("Relaying IRP to STORport\n");
 			return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 		}
 
 		// Got a request we don't care about?
-		Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Status = STATUS_INVALID_DEVICE_REQUEST;
 		Irp->IoStatus.Information = 0;
 	}
 	else {
@@ -4813,32 +4813,33 @@ dispatcher(
 				Status = fsDispatcher(DeviceObject, Irp, IrpSp);
 		}
 
-		ASSERT(validity_check == *((uint64_t *)Irp));
-
-		// IOCTL_STORAGE_GET_HOTPLUG_INFO
-		// IOCTL_DISK_CHECK_VERIFY
-		// IOCTL_STORAGE_QUERY_PROPERTY
-		Irp->IoStatus.Status = Status;
-
 		if (TopLevel) { IoSetTopLevelIrp(NULL); }
 		FsRtlExitFileSystem();
 	}
 
-	switch (Status) {
-	case STATUS_SUCCESS:
-	case STATUS_BUFFER_OVERFLOW:
-		break;
-	default:
-		dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
-			common_status_str(Status),
-			Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
-	}
-
 	// Complete the request if it isn't pending (ie, we called zfsdev_async())
 	ASSERT(validity_check == *((uint64_t *)Irp));
+	if (validity_check == *((uint64_t *)Irp)) {
+		
+		switch (Status) {
+		case STATUS_SUCCESS:
+		case STATUS_BUFFER_OVERFLOW:
+		case STATUS_PENDING:
+			break;
+		default:
+			dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
+				common_status_str(Status),
+				Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+		}
 
-	if (Status != STATUS_PENDING)
-		IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+		if (Status != STATUS_PENDING) {
+			// IOCTL_STORAGE_GET_HOTPLUG_INFO
+			// IOCTL_DISK_CHECK_VERIFY
+			// IOCTL_STORAGE_QUERY_PROPERTY
+			Irp->IoStatus.Status = Status;
+			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+		}
+	}
 	return Status;
 }
 
