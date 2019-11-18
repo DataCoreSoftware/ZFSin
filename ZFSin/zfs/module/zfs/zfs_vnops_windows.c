@@ -4053,17 +4053,17 @@ ioctlDispatcher(
 		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
+		FsRtlEnterFileSystem();
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME ioctl\n");
-			FsRtlEnterFileSystem();
 			Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
-			FsRtlExitFileSystem();
 			break;
 		default:
 			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL default case!\n");
 			break;
 		}
+		FsRtlExitFileSystem();
 		break;
 
 	case IRP_MJ_PNP:
@@ -4273,12 +4273,11 @@ diskDispatcher(
 		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
+		FsRtlEnterFileSystem();
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
-			FsRtlEnterFileSystem();
 			Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
-			FsRtlExitFileSystem();
 			break;
 		case IRP_MN_USER_FS_REQUEST:
 			dprintf("IRP_MN_USER_FS_REQUEST: FsControlCode 0x%x\n",
@@ -4286,6 +4285,7 @@ diskDispatcher(
 			Status = user_fs_request(DeviceObject, Irp, IrpSp);
 			break;
 		}
+		FsRtlExitFileSystem();
 		break;
 
 	case IRP_MJ_QUERY_INFORMATION:
@@ -4706,8 +4706,6 @@ fsDispatcher(
 		break;
 	}
 
-	FsRtlExitFileSystem();
-
 	/* Re-check (since MJ_CREATE/vnop_lookup might have set it) vp here, to see if
 	 * we should call setsize 
 	 */
@@ -4725,6 +4723,8 @@ fsDispatcher(
 			VN_RELE(vp);
 		}
 	}
+
+	FsRtlExitFileSystem();
 
 	/* If we held the vp above, release it now. */
 	if (hold_vp != NULL) {
@@ -4803,6 +4803,7 @@ dispatcher(
 		else {
 			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
+				if (TopLevel) { IoSetTopLevelIrp(NULL); }
 				//dprintf("Relaying IRP to STORport\n");
 				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 			}
@@ -4816,29 +4817,30 @@ dispatcher(
 	if (TopLevel) {
 		IoSetTopLevelIrp(NULL);
 	}
-	
 
-	ASSERT(validity_check == *((uint64_t *)Irp));
-	if (validity_check == *((uint64_t *)Irp)) {
+	switch (Status) {
+	case STATUS_SUCCESS:
+	case STATUS_BUFFER_OVERFLOW:
+	case STATUS_PENDING:
+		break;
+	default:
+		ASSERT(validity_check == *((uint64_t *)Irp));
+		dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
+			common_status_str(Status),
+			Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+	}
 
-		switch (Status) {
-		case STATUS_SUCCESS:
-		case STATUS_BUFFER_OVERFLOW:
-		case STATUS_PENDING:
-			break;
-		default:
-			dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
-				common_status_str(Status),
-				Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
-		}
+	// IOCTL_STORAGE_GET_HOTPLUG_INFO
+	// IOCTL_DISK_CHECK_VERIFY
+	// IOCTL_STORAGE_QUERY_PROPERTY
+	Irp->IoStatus.Status = Status;
 
-		// IOCTL_STORAGE_GET_HOTPLUG_INFO
-		// IOCTL_DISK_CHECK_VERIFY
-		// IOCTL_STORAGE_QUERY_PROPERTY
-		Irp->IoStatus.Status = Status;
 
-		// Complete the request if it isn't pending (ie, we called zfsdev_async())
-		if (Status != STATUS_PENDING)
+	// Complete the request if it isn't pending (ie, we called zfsdev_async())
+	if (Status != STATUS_PENDING)
+	{
+		ASSERT(validity_check == *((uint64_t *)Irp));
+		if (validity_check == *((uint64_t *)Irp))
 			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	}
 	return Status;
