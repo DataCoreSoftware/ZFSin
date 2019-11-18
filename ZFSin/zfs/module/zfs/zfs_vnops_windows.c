@@ -4056,7 +4056,9 @@ ioctlDispatcher(
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME ioctl\n");
+			FsRtlEnterFileSystem();
 			Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
+			FsRtlExitFileSystem();
 			break;
 		default:
 			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL default case!\n");
@@ -4274,7 +4276,9 @@ diskDispatcher(
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
+			FsRtlEnterFileSystem();
 			Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
+			FsRtlExitFileSystem();
 			break;
 		case IRP_MN_USER_FS_REQUEST:
 			dprintf("IRP_MN_USER_FS_REQUEST: FsControlCode 0x%x\n",
@@ -4398,6 +4402,8 @@ fsDispatcher(
 	 */
 
 	Status = STATUS_NOT_IMPLEMENTED;
+
+	FsRtlEnterFileSystem();
 
 	switch (IrpSp->MajorFunction) {
 
@@ -4700,6 +4706,7 @@ fsDispatcher(
 		break;
 	}
 
+	FsRtlExitFileSystem();
 
 	/* Re-check (since MJ_CREATE/vnop_lookup might have set it) vp here, to see if
 	 * we should call setsize 
@@ -4756,7 +4763,6 @@ dispatcher(
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	uint64_t validity_check;
-	mount_t *zmo;
 
 	// Storport can call itself (and hence, ourselves) so this isn't always true.
 	//PAGED_CODE();
@@ -4780,47 +4786,41 @@ dispatcher(
 	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
 
-	zmo = DeviceObject->DeviceExtension;
 
-	extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
-
-	if (DeviceObject != ioctlDeviceObject && (zmo == NULL || ((zmo->type != MOUNT_TYPE_DCB) && (zmo->type != MOUNT_TYPE_VCB)))) {
-
-		if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-			//dprintf("Relaying IRP to STORport\n");
-			return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
-		}
-
-		// Got a request we don't care about?
-		Status = STATUS_INVALID_DEVICE_REQUEST;
-		Irp->IoStatus.Information = 0;
+	if (IoGetTopLevelIrp() == NULL) {
+		IoSetTopLevelIrp(Irp);
+		TopLevel = TRUE;
 	}
+
+	if (DeviceObject == ioctlDeviceObject)
+		Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
 	else {
-
-		FsRtlEnterFileSystem();
-
-		if (IoGetTopLevelIrp() == NULL) {
-			IoSetTopLevelIrp(Irp);
-			TopLevel = TRUE;
-		}
-
-		if (DeviceObject == ioctlDeviceObject)
-			Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
+		mount_t * zmo = DeviceObject->DeviceExtension;
+		if (zmo && zmo->type == MOUNT_TYPE_DCB)
+			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
+		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
+			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
 		else {
-			if (zmo && zmo->type == MOUNT_TYPE_DCB)
-				Status = diskDispatcher(DeviceObject, Irp, IrpSp);
-			else if (zmo && zmo->type == MOUNT_TYPE_VCB)
-				Status = fsDispatcher(DeviceObject, Irp, IrpSp);
-		}
+			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
+			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
+				//dprintf("Relaying IRP to STORport\n");
+				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
+			}
 
-		if (TopLevel) { IoSetTopLevelIrp(NULL); }
-		FsRtlExitFileSystem();
+			// Got a request we don't care about?
+			Status = STATUS_INVALID_DEVICE_REQUEST;
+			Irp->IoStatus.Information = 0;
+		}
 	}
 
-	// Complete the request if it isn't pending (ie, we called zfsdev_async())
+	if (TopLevel) {
+		IoSetTopLevelIrp(NULL);
+	}
+	
+
 	ASSERT(validity_check == *((uint64_t *)Irp));
 	if (validity_check == *((uint64_t *)Irp)) {
-		
+
 		switch (Status) {
 		case STATUS_SUCCESS:
 		case STATUS_BUFFER_OVERFLOW:
@@ -4832,13 +4832,14 @@ dispatcher(
 				Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 		}
 
-		if (Status != STATUS_PENDING) {
-			// IOCTL_STORAGE_GET_HOTPLUG_INFO
-			// IOCTL_DISK_CHECK_VERIFY
-			// IOCTL_STORAGE_QUERY_PROPERTY
-			Irp->IoStatus.Status = Status;
+		// IOCTL_STORAGE_GET_HOTPLUG_INFO
+		// IOCTL_DISK_CHECK_VERIFY
+		// IOCTL_STORAGE_QUERY_PROPERTY
+		Irp->IoStatus.Status = Status;
+
+		// Complete the request if it isn't pending (ie, we called zfsdev_async())
+		if (Status != STATUS_PENDING)
 			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
-		}
 	}
 	return Status;
 }
