@@ -4830,18 +4830,17 @@ dispatcher(
 			Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 	}
 
-	// IOCTL_STORAGE_GET_HOTPLUG_INFO
-	// IOCTL_DISK_CHECK_VERIFY
-	// IOCTL_STORAGE_QUERY_PROPERTY
-	Irp->IoStatus.Status = Status;
-
-
 	// Complete the request if it isn't pending (ie, we called zfsdev_async())
 	if (Status != STATUS_PENDING)
 	{
 		ASSERT(validity_check == *((uint64_t *)Irp));
-		if (validity_check == *((uint64_t *)Irp))
+		if (validity_check == *((uint64_t *)Irp)) {
+			// IOCTL_STORAGE_GET_HOTPLUG_INFO
+			// IOCTL_DISK_CHECK_VERIFY
+			// IOCTL_STORAGE_QUERY_PROPERTY
+			Irp->IoStatus.Status = Status;
 			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+		}
 	}
 	return Status;
 }
