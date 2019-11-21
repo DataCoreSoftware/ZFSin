@@ -4053,7 +4053,6 @@ ioctlDispatcher(
 		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
-		FsRtlEnterFileSystem();
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME ioctl\n");
@@ -4063,7 +4062,6 @@ ioctlDispatcher(
 			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL default case!\n");
 			break;
 		}
-		FsRtlExitFileSystem();
 		break;
 
 	case IRP_MJ_PNP:
@@ -4273,7 +4271,6 @@ diskDispatcher(
 		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
-		FsRtlEnterFileSystem();
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
 			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
@@ -4285,7 +4282,6 @@ diskDispatcher(
 			Status = user_fs_request(DeviceObject, Irp, IrpSp);
 			break;
 		}
-		FsRtlExitFileSystem();
 		break;
 
 	case IRP_MJ_QUERY_INFORMATION:
@@ -4402,8 +4398,6 @@ fsDispatcher(
 	 */
 
 	Status = STATUS_NOT_IMPLEMENTED;
-
-	FsRtlEnterFileSystem();
 
 	switch (IrpSp->MajorFunction) {
 
@@ -4724,8 +4718,6 @@ fsDispatcher(
 		}
 	}
 
-	FsRtlExitFileSystem();
-
 	/* If we held the vp above, release it now. */
 	if (hold_vp != NULL) {
 		VN_RELE(hold_vp);
@@ -4760,6 +4752,7 @@ dispatcher(
 )
 {
 	BOOLEAN TopLevel = FALSE;
+	BOOLEAN AtIrqlPassiveLevel;
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	uint64_t validity_check;
@@ -4786,7 +4779,10 @@ dispatcher(
 	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
 
-
+	AtIrqlPassiveLevel = (KeGetCurrentIrql() == PASSIVE_LEVEL);
+	if (AtIrqlPassiveLevel) {
+		FsRtlEnterFileSystem();
+	}
 	if (IoGetTopLevelIrp() == NULL) {
 		IoSetTopLevelIrp(Irp);
 		TopLevel = TRUE;
@@ -4803,7 +4799,12 @@ dispatcher(
 		else {
 			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				if (TopLevel) { IoSetTopLevelIrp(NULL); }
+				if (AtIrqlPassiveLevel) {
+					FsRtlExitFileSystem();
+				}
+				if (TopLevel) {
+					IoSetTopLevelIrp(NULL);
+				}
 				//dprintf("Relaying IRP to STORport\n");
 				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 			}
@@ -4814,6 +4815,9 @@ dispatcher(
 		}
 	}
 
+	if (AtIrqlPassiveLevel) {
+		FsRtlExitFileSystem();
+	}
 	if (TopLevel) {
 		IoSetTopLevelIrp(NULL);
 	}
@@ -4841,6 +4845,8 @@ dispatcher(
 			Irp->IoStatus.Status = Status;
 			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 		}
+		else
+			KeBugCheck(INCONSISTENT_IRP);
 	}
 	return Status;
 }
