@@ -4799,11 +4799,11 @@ dispatcher(
 		else {
 			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				if (AtIrqlPassiveLevel) {
-					FsRtlExitFileSystem();
-				}
 				if (TopLevel) {
 					IoSetTopLevelIrp(NULL);
+				}
+				if (AtIrqlPassiveLevel) {
+					FsRtlExitFileSystem();
 				}
 				//dprintf("Relaying IRP to STORport\n");
 				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
