@@ -4846,7 +4846,7 @@ dispatcher(
 			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 		}
 		else
-			KeBugCheck(INCONSISTENT_IRP);
+			KeBugCheckEx(INCONSISTENT_IRP, (ULONG_PTR)Irp, 0, 0, 0);
 	}
 	return Status;
 }
