@@ -4648,6 +4648,7 @@ dispatcher(
 	PIO_STACK_LOCATION IrpSp;
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	uint64_t validity_check;
+	mount_t *zmo;
 
 	// Storport can call itself (and hence, ourselves) so this isn't always true.
 	//PAGED_CODE();
