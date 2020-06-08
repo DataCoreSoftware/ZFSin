@@ -2463,7 +2463,7 @@ static void
 dump_cachefile(const char *cachefile)
 {
 	int fd;
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	char *buf;
 	nvlist_t *config;
 
@@ -5856,7 +5856,7 @@ main(int argc, char **argv)
 	dump_debug_buffer();
 
 	libzfs_fini(g_zfs);
-	kernel_fini();
+	//kernel_fini(); TODO fix hang in arc_fini()
 
 	return (error);
 }

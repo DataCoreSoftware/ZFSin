@@ -24,6 +24,7 @@
  */
 
 #include <sys/zfs_context.h>
+#include <sys/types.h>
 #include <sys/spa.h>
 #include <sys/spa_impl.h>
 #include <sys/vdev_file.h>
@@ -60,6 +61,22 @@ vdev_file_rele(vdev_t *vd)
 #ifdef _KERNEL
 extern int VOP_GETATTR(struct vnode *vp, vattr_t *vap, int flags, void *x3, void *x4);
 #endif
+
+static mode_t vdev_file_open_mode(spa_mode_t spa_mode)
+{
+	mode_t mode = 0;
+	// TODO :- Add flags
+	if ((spa_mode & SPA_MODE_READ) && (spa_mode & SPA_MODE_WRITE)) {
+		mode = O_RDWR;
+	}
+	else if (spa_mode & SPA_MODE_READ) {
+		mode = O_RDONLY;
+	}
+	else if (spa_mode & SPA_MODE_WRITE) {
+		mode = O_WRONLY;
+	}
+	return mode;
+}
 
 static int
 vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
@@ -132,6 +149,7 @@ vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
 	  mode_t umask, struct vnode *startvp);
 	*/
 	uint8_t* FileName = NULL;
+#ifdef _KERNEL
 	FileName = vd->vdev_path;
 
 	if (!strncmp("\\\\?\\", FileName, 4)) {
@@ -139,7 +157,6 @@ vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
 	}
 
 	dprintf("%s: opening '%s'\n", __func__, FileName);
-#ifdef _KERNEL
 
 	ANSI_STRING         AnsiFilespec;
 	UNICODE_STRING      UnicodeFilespec;
@@ -261,8 +278,32 @@ vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
 		0
 	);
 	dprintf("%s: set Sparse 0x%x.\n", __func__, status);
-#else // !KERNEL
+#else // !_KERNEL
 
+	zfs_file_t fp;
+	int err;
+	FileName = vd->vdev_physpath;
+
+	if (FileName[0] == '#') {
+		uint8_t *end;
+		end = &FileName[0];
+		while (end && end[0] == '#') end++;
+		ddi_strtoull(end, &end, 10, &vd->vdev_win_offset);
+		while (end && end[0] == '#') end++;
+		ddi_strtoull(end, &end, 10, &vd->vdev_win_length);
+		while (end && end[0] == '#') end++;
+
+		FileName = end;
+	}
+
+	err = zfs_file_open(FileName, vdev_file_open_mode(spa_mode(vd->vdev_spa)), 0, &fp);
+	if (err) {
+		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		goto failed;
+	}
+	vf->vf_handle = fp;
+
+#if 0
 	vf->vf_handle = CreateFile(FileName,
 		GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -274,8 +315,8 @@ vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
 		goto failed;
 	}
-
 #endif
+#endif //_KERNEL
 
 skip_open:
 #if _KERNEL
@@ -292,11 +333,9 @@ skip_open:
 #ifdef _KERNEL
 	*max_psize = *psize = info.EndOfFile.QuadPart;
 #else
-	LARGE_INTEGER size = { 0 };
-	GetFileSizeEx(vf->vf_handle, &size);
-	*max_psize = *psize = size.QuadPart;
+	*max_psize = *psize = vd->vdev_win_length;;
 #endif
-    *ashift = SPA_MINBLOCKSHIFT;
+	*ashift = SPA_MINBLOCKSHIFT;
 
 	return (0);
 
@@ -331,7 +370,7 @@ vdev_file_close(vdev_t *vd)
 
 		ZwClose(vf->vf_handle);
 #else
-		CloseHandle(vf->vf_handle);
+		zfs_file_close(&vf->vf_handle);
 #endif
 	}
 
@@ -554,36 +593,35 @@ vdev_file_io_start(zio_t *zio)
 
 	IoCallDriver(vf->vf_DeviceObject, irp);
 
-
-#else // !KERNEL
+#else // !_KERNEL
 
 	void *data;
 	boolean_t ok = FALSE;
-	DWORD red;
+	int err;
 
-	if (!SetFilePointerEx(vf->vf_handle, offset, NULL, FILE_BEGIN))
-		goto failed;
+	//if (!SetFilePointerEx(vf->vf_handle, offset, NULL, FILE_BEGIN))
+	//	goto failed;
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		data =
-			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
-		ok = ReadFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		data = abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
+		//ok = ReadFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		err = zfs_file_pread(&vf->vf_handle, data, zio->io_size, offset.QuadPart, &resid);
 		abd_return_buf_copy(zio->io_abd, data, zio->io_size);
 	} else {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		data =
-			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
-		ok = WriteFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		data = abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
+		//ok = WriteFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		// TODO err = zfs_file_pwrite(vf->vf_handle, data, zio->io_size, &resid, offset);
 		abd_return_buf_off(zio->io_abd, data,
 			0, zio->io_size, zio->io_abd->abd_size);
 	}
 
 failed:
-	if (!ok)
+	if (err)
 		zio->io_error = EIO;
-	else if (red != zio->io_size)
-		zio->io_error = SET_ERROR(ENOSPC);
+	else if (resid != 0 && zio->io_error == 0)
+		zio->io_error = ENOSPC;
 	else
 		zio->io_error = 0;
 

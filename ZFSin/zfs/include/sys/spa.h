@@ -775,6 +775,12 @@ typedef enum {
 	SPA_AUTOTRIM_ON
 } spa_autotrim_t;
 
+typedef enum spa_mode {
+	SPA_MODE_UNINIT = 0,
+	SPA_MODE_READ = 1,
+	SPA_MODE_WRITE = 2,
+} spa_mode_t;
+
 /*
  * Reason TRIM command was issued, used internally for accounting purposes.
  */

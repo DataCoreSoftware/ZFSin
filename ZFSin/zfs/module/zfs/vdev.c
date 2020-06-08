@@ -1581,8 +1581,7 @@ vdev_set_deflate_ratio(vdev_t *vd)
 /*
  * Prepare a virtual device for access.
  */
-int
-vdev_open(vdev_t *vd)
+int vdev_open(vdev_t *vd)
 {
 	spa_t *spa = vd->vdev_spa;
 	int error;
@@ -1712,11 +1711,11 @@ vdev_open(vdev_t *vd)
 	/*
 	 * Make sure the allocatable size hasn't shrunk too much.
 	 */
-	if (asize < vd->vdev_min_asize) {
-		vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
-		    VDEV_AUX_BAD_LABEL);
-		return (SET_ERROR(EINVAL));
-	}
+	//if (asize < vd->vdev_min_asize) {
+	//	vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
+	//	    VDEV_AUX_BAD_LABEL);
+	//	return (SET_ERROR(EINVAL));
+	//}
 
 	if (vd->vdev_asize == 0) {
 		/*
@@ -1840,7 +1839,7 @@ vdev_validate(vdev_t *vd)
 	 * any further validation.  Otherwise, label I/O will fail and we will
 	 * overwrite the previous state.
 	 */
-	if (!vd->vdev_ops->vdev_op_leaf || !vdev_readable(vd))
+	if (!vd->vdev_ops->vdev_op_leaf || !vdev_readable(vd)) // vdev is readable therefore returned true
 		return (0);
 
 	/*

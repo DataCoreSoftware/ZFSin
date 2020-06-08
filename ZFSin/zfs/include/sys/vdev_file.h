@@ -28,6 +28,7 @@
 #define	_SYS_VDEV_FILE_H
 
 #include <sys/vdev.h>
+#include <sys/zfs_file.h>
 
 #ifdef	__cplusplus
 extern "C" {

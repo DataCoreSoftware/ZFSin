@@ -458,6 +458,7 @@
     <ClCompile Include="zfs\module\zfs\zfs_byteswap.c" />
     <ClCompile Include="zfs\module\zfs\zfs_debug.c" />
     <ClCompile Include="zfs\module\zfs\zfs_dir.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_file.c" />
     <ClCompile Include="zfs\module\zfs\zfs_fm.c" />
     <ClCompile Include="zfs\module\zfs\zfs_fuid.c" />
     <ClCompile Include="zfs\module\zfs\zfs_ioctl.c">
@@ -643,6 +644,7 @@
     <ClInclude Include="zfs\include\sys\zfs_debug.h" />
     <ClInclude Include="zfs\include\sys\zfs_delay.h" />
     <ClInclude Include="zfs\include\sys\zfs_dir.h" />
+    <ClInclude Include="zfs\include\sys\zfs_file.h" />
     <ClInclude Include="zfs\include\sys\zfs_fuid.h" />
     <ClInclude Include="zfs\include\sys\zfs_ioctl.h" />
     <ClInclude Include="zfs\include\sys\zfs_mount.h" />

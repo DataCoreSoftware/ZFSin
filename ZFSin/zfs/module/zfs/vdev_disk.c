@@ -162,9 +162,10 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	// Use vd->vdev_physpath first, if set, otherwise
 	// usual vd->vdev_path
-	vdev_path = vd->vdev_path;
 	if (vd->vdev_physpath)
-		vdev_path = vd->vdev_physpath;
+		vdev_path = spa_strdup(vd->vdev_physpath);
+	else
+		vdev_path = spa_strdup(vd->vdev_path);
 
 	/* Check for partition encoded paths */
 	if (vdev_path[0] == '#') {
@@ -181,7 +182,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	}
 	else {
 
-		FileName = vd->vdev_path;
+		FileName = vdev_path;
 
 	}
 
