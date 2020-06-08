@@ -771,7 +771,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	if (fd == -1)
 		return (errno);
 
-	if (fstat_blk(fd, &st) == -1) {
+	if (fstat(fd, &st) == -1) {
 		err = errno;
 		close(fd);
 		return (err);
@@ -797,7 +797,7 @@ vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
 	int ret;
 
 	ASSERT(startvp == rootdir);
-	(void) sprintf(realpath, "/%s", path);
+	(void) sprintf(realpath, "%s", path);
 
 	/* fd ignored for now, need if want to simulate nbmand support */
 	ret = vn_open(realpath, x1, flags, mode, vpp, x2, x3);
