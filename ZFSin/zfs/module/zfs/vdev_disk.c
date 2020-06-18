@@ -321,6 +321,8 @@ skip_open:
 	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
 	dprintf("%s: picked ashift %llu for device\n", __func__, *ashift);
 
+	vd->vdev_io_taskq = taskq_create("vdev_io_taskq", max_ncpus, minclsyspri, max_ncpus, INT_MAX, TASKQ_PREPOPULATE);
+
 	/*
 	* Clear the nowritecache bit, so that on a vdev_reopen() we will
 	* try again.
@@ -352,7 +354,7 @@ vdev_disk_close(vdev_t *vd)
 	if (vd->vdev_reopening || dvd == NULL)
 		return;
 
-
+	taskq_destroy(vd->vdev_io_taskq);
 	vd->vdev_delayed_close = B_FALSE;
 	/*
 	 * If we closed the LDI handle due to an offline notify from LDI,
@@ -437,6 +439,42 @@ vdev_disk_ioctl_done(void *zio_arg, int error)
 	zio->io_error = error;
 
 	zio_interrupt(zio);
+}
+
+struct vdev_disk_callback_struct {
+	KEVENT Event;
+	zio_t *zio;
+	PIRP irp;
+	void *b_addr;
+};
+typedef struct vdev_disk_callback_struct vd_callback_t;
+
+static void
+vdev_disk_io_start_done_cb(void *param)
+{
+	vd_callback_t *vb = (vd_callback_t *)param;
+
+	// Wait for IoCompletionRoutine to have been called.
+	KeWaitForSingleObject(&vb->Event, Executive, KernelMode, FALSE, NULL);
+
+	NTSTATUS status = vb->irp->IoStatus.Status;
+	zio_t *zio = vb->zio;
+	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
+
+	// Return abd buf
+	if (zio->io_type == ZIO_TYPE_READ) {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
+	} else {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+
+	kmem_free(vb, sizeof(vd_callback_t));
+	vb = NULL;
+	zio_delay_interrupt(zio);
 }
 
 static void
@@ -549,60 +587,53 @@ vdev_disk_io_start(zio_t *zio)
 
 	zio->io_target_timestamp = zio_handle_io_delay(zio);
 
-	/*
-	* If we use vdev_disk_io_intr() as the IoSetCompletionRoutine() we BSOD as
-	* the IoSetCompletionRoutine() is called in higher priority, and vdev_disk_io_intr()
-	* calls zio_taskq_dispatch() which uses mutex calls, and that is not allowed at
-	* that IRQ level. So for now we block waiting on IoSetCompletionRoutine() setting
-	* and Event, then we manually call vdev_disk_io_intr().
-	* We should change this to call zio_taskq_dispatch() before IO, but to a new
-	* taskq, which immediately blocks waiting for Event to be set. That way we
-	* as async, and not blocking.
-	*/
-
 	ASSERT(zio->io_size != 0);
 
-	NTSTATUS status;
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
-	void *b_addr = NULL;
 	IO_STATUS_BLOCK IoStatusBlock = { 0 };
 	LARGE_INTEGER offset;
 	KEVENT Event;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
+	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
+	vb->zio = zio;
+
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		b_addr =
+		vb->b_addr =
 			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
-		b_addr =
+		vb->b_addr =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	if (flags & B_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			dvd->vd_DeviceObject,
-			b_addr,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			dvd->vd_DeviceObject,
-			b_addr,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 	
 	if (!irp) {
+		kmem_free(vb, sizeof(vd_callback_t));
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
+
+	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 
@@ -612,33 +643,15 @@ vdev_disk_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_disk_io_intrxxx,
-		&Event, // "Context" in vdev_disk_io_intr()
+		&vb->Event, // "Context" in vdev_disk_io_intr()
 		TRUE, // On Success
 		TRUE, // On Error
 		TRUE);// On Cancel
 
-	status = IoCallDriver(dvd->vd_DeviceObject, irp);
+	taskq_dispatch(vd->vdev_io_taskq, vdev_disk_io_start_done_cb, vb, TQ_SLEEP);
 
-	if (status == STATUS_PENDING) {
-		// Wait for IoCompletionRoutine to have been called.
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL); 
-		status = IoStatusBlock.Status;
-	}
+	IoCallDriver(dvd->vd_DeviceObject, irp);
 
-	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
-
-	// Return abd buf
-	if (zio->io_type == ZIO_TYPE_READ) {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_copy_off(zio->io_abd, b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	} else {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_off(zio->io_abd, b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	}
-
-	zio_delay_interrupt(zio);
 	return;
 }
 
