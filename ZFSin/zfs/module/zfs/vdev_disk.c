@@ -321,8 +321,6 @@ skip_open:
 	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
 	dprintf("%s: picked ashift %llu for device\n", __func__, *ashift);
 
-	vd->vdev_io_taskq = taskq_create("vdev_io_taskq", max_ncpus, minclsyspri, max_ncpus, INT_MAX, TASKQ_PREPOPULATE);
-
 	/*
 	* Clear the nowritecache bit, so that on a vdev_reopen() we will
 	* try again.
@@ -354,7 +352,6 @@ vdev_disk_close(vdev_t *vd)
 	if (vd->vdev_reopening || dvd == NULL)
 		return;
 
-	taskq_destroy(vd->vdev_io_taskq);
 	vd->vdev_delayed_close = B_FALSE;
 	/*
 	 * If we closed the LDI handle due to an offline notify from LDI,
@@ -401,25 +398,6 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 	return EIO;
 }
 
-/*
-* IO has finished callback, in Windows this is called as a different
-* IRQ level, so we can practically do nothing here. (Can't call mutex
-* locking, like from kmem_free())
-*/
-
-IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
-
-static NTSTATUS
-vdev_disk_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
-{
-	KeSetEvent((KEVENT *)Context, NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT, FALSE);
-	// zfs/zfs-15
-	UnlockAndFreeMdl(irp->MdlAddress);
-	IoFreeIrp(irp);
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-
 static void
 vdev_disk_ioctl_free(zio_t *zio)
 {
@@ -442,20 +420,19 @@ vdev_disk_ioctl_done(void *zio_arg, int error)
 }
 
 struct vdev_disk_callback_struct {
-	KEVENT Event;
 	zio_t *zio;
 	PIRP irp;
 	void *b_addr;
+	char work_item[0];
 };
 typedef struct vdev_disk_callback_struct vd_callback_t;
 
 static void
-vdev_disk_io_start_done_cb(void *param)
+vdev_disk_io_start_done(void *param)
 {
 	vd_callback_t *vb = (vd_callback_t *)param;
 
-	// Wait for IoCompletionRoutine to have been called.
-	KeWaitForSingleObject(&vb->Event, Executive, KernelMode, FALSE, NULL);
+	ASSERT(vb != NULL);
 
 	NTSTATUS status = vb->irp->IoStatus.Status;
 	zio_t *zio = vb->zio;
@@ -472,9 +449,53 @@ vdev_disk_io_start_done_cb(void *param)
 			0, zio->io_size, zio->io_abd->abd_size);
 	}
 
-	kmem_free(vb, sizeof(vd_callback_t));
+	UnlockAndFreeMdl(vb->irp->MdlAddress);
+	IoFreeIrp(vb->irp);
+	kmem_free(vb, sizeof(vd_callback_t) + IoSizeofWorkItem());
 	vb = NULL;
 	zio_delay_interrupt(zio);
+}
+
+static VOID
+DiskIoWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	vd_callback_t *vb = (vd_callback_t *)pWkParms;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)vb->work_item);
+	vdev_disk_io_start_done(vb);
+}
+
+/*
+* IO has finished callback, in Windows this is called as a different
+* IRQ level, so we can practically do nothing here. (Can't call mutex
+* locking, like from kmem_free())
+*/
+
+IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
+
+static NTSTATUS
+vdev_disk_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
+{
+	vd_callback_t *vb = (vd_callback_t *)Context;
+
+	ASSERT(vb != NULL);
+
+	vdev_disk_t *dvd = vb->zio->io_vd->vdev_tsd;
+
+	/* If IRQL is below DIPATCH_LEVEL then there is no issue in calling
+	 * vdev_disk_io_start_done_cb() directly; otherwise queue a new Work Item
+	*/
+	if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+		vdev_disk_io_start_done(vb);
+	else {
+		IoInitializeWorkItem(dvd->vd_DeviceObject, (PIO_WORKITEM)vb->work_item);
+		IoQueueWorkItem((PIO_WORKITEM)vb->work_item, DiskIoWkRtn, DelayedWorkQueue, vb);
+	}
+	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
 static void
@@ -593,11 +614,11 @@ vdev_disk_io_start(zio_t *zio)
 	PIO_STACK_LOCATION irpStack = NULL;
 	IO_STATUS_BLOCK IoStatusBlock = { 0 };
 	LARGE_INTEGER offset;
-	KEVENT Event;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
-	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
+	/* Preallocate space for IoWorkItem, required for vdev_disk_io_start_done callback */
+	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t) + IoSizeofWorkItem(), KM_SLEEP);
 	vb->zio = zio;
 
 	if (zio->io_type == ZIO_TYPE_READ) {
@@ -608,7 +629,6 @@ vdev_disk_io_start(zio_t *zio)
 		vb->b_addr =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
-	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	if (flags & B_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
@@ -643,12 +663,10 @@ vdev_disk_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_disk_io_intrxxx,
-		&vb->Event, // "Context" in vdev_disk_io_intr()
+		vb, // "Context" in vdev_disk_io_intr()
 		TRUE, // On Success
 		TRUE, // On Error
 		TRUE);// On Cancel
-
-	taskq_dispatch(vd->vdev_io_taskq, vdev_disk_io_start_done_cb, vb, TQ_SLEEP);
 
 	IoCallDriver(dvd->vd_DeviceObject, irp);
 

@@ -401,7 +401,6 @@ struct vdev {
 	uint64_t	vdev_leaf_zap;
 	hrtime_t	vdev_mmp_pending; /* 0 if write finished	*/
 	uint64_t	vdev_mmp_kstat_id;	/* to find kstat entry */
-	taskq_t		*vdev_io_taskq; /* task queue for vdev io */
 
 	/*
 	 * For DTrace to work in userland (libzpool) context, these fields must
