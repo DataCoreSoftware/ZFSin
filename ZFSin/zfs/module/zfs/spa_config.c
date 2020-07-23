@@ -101,7 +101,7 @@ spa_config_load(void)
 	(void) snprintf(pathname, MAXPATHLEN, "%s%s",
 	    "", spa_config_path);
 
-	file = kobj_open_file(pathname);
+	file = kobj_open_file("C:\\WINDOWS\\System32\\drivers\\zpool.cache");
 
 	kmem_free(pathname, MAXPATHLEN);
 
