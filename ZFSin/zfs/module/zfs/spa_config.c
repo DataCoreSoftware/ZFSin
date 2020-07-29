@@ -36,6 +36,7 @@
 #include <sys/systeminfo.h>
 #include <sys/sunddi.h>
 #include <sys/zfeature.h>
+#include <sys/zfs_file.h>
 #ifdef _KERNEL
 #include <sys/kobj.h>
 #include <sys/zone.h>
@@ -100,7 +101,7 @@ spa_config_load(void)
 	(void) snprintf(pathname, MAXPATHLEN, "%s%s",
 	    "", spa_config_path);
 
-	file = kobj_open_file(pathname);
+	file = kobj_open_file("C:\\WINDOWS\\System32\\drivers\\zpool.cache");
 
 	kmem_free(pathname, MAXPATHLEN);
 
@@ -158,10 +159,9 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 	char *buf;
 	vnode_t *vp;
 	int oflags = FWRITE | FTRUNC | FCREAT | FOFFMAX;
-#ifdef __linux__
-	int error;
-#endif
+	int err;
 	char *temp;
+	zfs_file_t fp;
 
 	/*
 	 * If the nvlist is empty (NULL), then remove the old cachefile.
@@ -179,15 +179,32 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 	 * Pack the configuration into a buffer.
 	 */
 	buf = fnvlist_pack(nvl, &buflen);
-	temp = kmem_zalloc(MAXPATHLEN, KM_SLEEP);
+	//temp = kmem_zalloc(MAXPATHLEN, KM_SLEEP);
 
 	/*
 	 * Write the configuration to disk.  We need to do the traditional
 	 * 'write to temporary file, sync, move over original' to make sure we
 	 * always have a consistent view of the data.
 	 */
-	(void) snprintf(temp, MAXPATHLEN, "%s.tmp", dp->scd_path);
+	//(void) snprintf(temp, MAXPATHLEN, "%s.tmp", dp->scd_path);
 
+#ifdef _KERNEL
+	err = zfs_file_open(dp->scd_path, oflags, 0644, &fp);
+        if (err == 0) {
+                err = zfs_file_write(fp, buf, buflen, NULL);
+                zfs_file_close(fp);
+        }
+#if 0
+                if (err == 0)
+                        err = zfs_file_fsync(fp, O_SYNC);
+
+                zfs_file_close(fp);
+                if (err)
+                        (void) spa_config_remove(dp);
+#endif
+#endif
+
+#if 0
 	if (vn_open(temp, UIO_SYSSPACE, oflags, 0644, &vp, CRCREAT, 0) == 0) {
 		if (vn_rdwr(UIO_WRITE, vp, buf, buflen, 0, UIO_SYSSPACE,
 		    0, RLIM64_INFINITY, kcred, NULL) == 0 &&
@@ -208,9 +225,9 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 #else
 	(void) vn_remove(temp, UIO_SYSSPACE, RMFILE);
 #endif
-
+#endif
 	fnvlist_pack_free(buf, buflen);
-	kmem_free(temp, MAXPATHLEN);
+	//kmem_free(temp, MAXPATHLEN);
 }
 
 /*

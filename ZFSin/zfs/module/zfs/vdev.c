@@ -1581,8 +1581,7 @@ vdev_set_deflate_ratio(vdev_t *vd)
 /*
  * Prepare a virtual device for access.
  */
-int
-vdev_open(vdev_t *vd)
+int vdev_open(vdev_t *vd)
 {
 	spa_t *spa = vd->vdev_spa;
 	int error;

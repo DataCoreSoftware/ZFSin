@@ -52,6 +52,8 @@
 #include <sys/disk.h>
 #endif
 #include <sys/crypto/icp.h>
+#include <sys/zfs_file.h>
+#include<winternl.h>
 
 /*
  * Emulation of kernel services in userland.
@@ -771,7 +773,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	if (fd == -1)
 		return (errno);
 
-	if (fstat_blk(fd, &st) == -1) {
+	if (fstat(fd, &st) == -1) {
 		err = errno;
 		close(fd);
 		return (err);
@@ -787,8 +789,207 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 
 	return (0);
 }
+// create a new file if file not exist else open file on the basis of flags
+int zfs_file_open(const char *path, int flags, int mode, zfs_file_t **fpp)
+{
+	wchar_t buf[PATH_MAX];
+	UNICODE_STRING uniName;
+	mbstowcs(buf, path, sizeof(buf));
+	HANDLE hFile = CreateFileW(
+		buf,
+		GENERIC_READ | GENERIC_WRITE,
+		0,
+		NULL,
+		FILE_OVERWRITE_IF,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		return E_FAIL;
+	}
+	*fpp = &hFile; 
+	return 0;
+}
 
+// read from a file and write to buf update next unread bytes
+int zfs_file_read(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead, DWORD* resid)
+{
+	DWORD dwBytesRead;
+	HANDLE handle = hFile;
+	BOOL res = ReadFile(
+		hFile,
+		buf,
+		dwBytesToRead,
+		&dwBytesRead,
+		NULL
+	);
+	if (!res)
+	{
+		return E_FAIL;
+	}
+	if (resid)
+	{
+		*resid = dwBytesToRead - dwBytesRead;
+	}
+	else if (dwBytesRead != dwBytesToRead)
+	{
+		return E_FAIL;
+	}
+	return 0;
+}
+
+int zfs_file_write(zfs_file_t* hFile, void* buf, DWORD dwBytesToWrite, DWORD* resid)
+{
+	DWORD dwBytesWritten;
+	BOOL res = WriteFile(
+		hFile,
+		buf,
+		dwBytesToWrite,
+		&dwBytesWritten,
+		NULL
+	);
+	if (!res)
+	{
+		return E_FAIL;
+	}
+	if (resid)
+	{
+		*resid = dwBytesToWrite - dwBytesWritten;
+	}
+	else if (dwBytesToWrite != dwBytesWritten)
+	{
+			return E_FAIL;
+	}
+	return 0;
+}
+/*
+	Stateless read -> fp doesn't change with read operation
+	this func can be used only in case synchronous i/o 
+*/
+int zfs_file_pread(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead,DWORD* resid,DWORD offset)
+{
+	DWORD dwBytesRead;
+	OVERLAPPED ol = { .Offset = offset };
+	BOOL res = ReadFile(
+		hFile,
+		buf,
+		dwBytesToRead,
+		&dwBytesRead,
+		&ol
+	);
+	if (!res)
+	{
+		return E_FAIL;
+	}
+	if (resid)
+	{
+		*resid = dwBytesToRead - dwBytesRead;
+	}
+	else if (dwBytesToRead != dwBytesRead)
+	{
+		return E_FAIL;
+	}
+	return 0;
+}
+
+/*
+	stateless write -> write at a given offset and os internal pointer is not updated
+*/
+int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DWORD* resid, DWORD offset)
+{
+	/*
+	 * To simulate partial disk writes, we split writes into two
+	 * system calls so that the process can be killed in between.
+	 * This is used by ztest to simulate realistic failure modes.
+	 */
+	int sectors,split;
+	sectors = dwBytesToWrite >> SPA_MINBLOCKSHIFT;
+	split = (sectors > 0 ? rand() % sectors : 0) << SPA_MINBLOCKSHIFT;
+	DWORD dwBytesWritten;
+	OVERLAPPED ol = { .Offset = offset };
+	BOOL res = WriteFile(
+		hFile,
+		buf,
+		dwBytesToWrite,
+		&dwBytesWritten,
+		&ol
+	);
+	if (res)
+	{
+		OVERLAPPED ol2 = { .Offset = offset+split };
+		res = WriteFile(
+			hFile,
+			(char*)buf+split,
+			dwBytesToWrite-split,
+			&dwBytesWritten,
+			&ol2
+		);
+	}
+	if (!res)
+	{
+		return E_FAIL;
+	}
+	if (resid)
+	{
+		*resid = dwBytesToWrite - dwBytesWritten;
+	}
+	else if (dwBytesToWrite != dwBytesWritten)
+	{
+		return E_FAIL;
+	}
+	return 0;
+}
+
+void zfs_file_close(zfs_file_t* hFile)
+{
+	ASSERT(CloseHandle(hFile) == 0);
+}
 /*ARGSUSED*/
+
+DWORD zfs_file_off(zfs_file_t* hFile) // 1
+{
+	PLONG lpDistanceToMoveHigh;
+	return SetFilePointer(
+		hFile,
+		0L,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move, if set to NULL this won't be used
+		FILE_CURRENT
+	);
+}
+
+DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
+{
+	PLONG lpDistanceToMoveHigh;
+	return SetFilePointer(
+		hFile,
+		offset,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move
+		dwMoveMethod // FILE_BEGIN FILE_CURRENT FILE_END
+	);
+}
+
+BOOL zfs_file_flush(zfs_file_t* hFile,int flags) 
+{
+	return FlushFileBuffers(
+		hFile
+	);
+}
+
+int zfs_file_getattr(zfs_file_t *hFile, zfs_file_attr_t *zfattr)
+{
+	/*LPBY_HANDLE_FILE_INFORMATION fileInfo;
+	BOOL retval = GetFileInformationByHandle(hFile, &fileInfo);
+	if(retval)
+	{*/
+	DWORD dwFileSize;
+	DWORD dwFileType;
+	dwFileSize = GetFileSize(hFile, NULL);
+	zfattr->zfa_size = dwFileSize;
+	dwFileType = GetFileType(hFile);
+	zfattr->zfa_type = dwFileType;
+	return 0;
+}
 int
 vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
           int x3, vnode_t *startvp/*, int fd*/)
@@ -797,7 +998,7 @@ vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
 	int ret;
 
 	ASSERT(startvp == rootdir);
-	(void) sprintf(realpath, "/%s", path);
+	(void) sprintf(realpath, "%s", path);
 
 	/* fd ignored for now, need if want to simulate nbmand support */
 	ret = vn_open(realpath, x1, flags, mode, vpp, x2, x3);
