@@ -898,7 +898,14 @@ int zfs_file_pread(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead,DWORD* resi
 */
 int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DWORD* resid, DWORD offset)
 {
-	// should we split into two calls as in linux ?
+	/*
+	 * To simulate partial disk writes, we split writes into two
+	 * system calls so that the process can be killed in between.
+	 * This is used by ztest to simulate realistic failure modes.
+	 */
+	int sectors,split;
+	sectors = dwBytesToWrite >> SPA_MINBLOCKSHIFT;
+	split = (sectors > 0 ? rand() % sectors : 0) << SPA_MINBLOCKSHIFT;
 	DWORD dwBytesWritten;
 	OVERLAPPED ol = { .Offset = offset };
 	BOOL res = WriteFile(
@@ -908,6 +915,17 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 		&dwBytesWritten,
 		&ol
 	);
+	if (res)
+	{
+		OVERLAPPED ol2 = { .Offset = offset+split };
+		res = WriteFile(
+			hFile,
+			(char*)buf+split,
+			dwBytesToWrite-split,
+			&dwBytesWritten,
+			&ol2
+		);
+	}
 	if (!res)
 	{
 		return E_FAIL;
@@ -928,6 +946,50 @@ void zfs_file_close(zfs_file_t* hFile)
 	ASSERT(CloseHandle(hFile) == 0);
 }
 /*ARGSUSED*/
+
+DWORD zfs_file_off(zfs_file_t* hFile) // 1
+{
+	PLONG lpDistanceToMoveHigh;
+	return SetFilePointer(
+		hFile,
+		0L,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move, if set to NULL this won't be used
+		FILE_CURRENT
+	);
+}
+
+DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
+{
+	PLONG lpDistanceToMoveHigh;
+	return SetFilePointer(
+		hFile,
+		offset,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move
+		dwMoveMethod // FILE_BEGIN FILE_CURRENT FILE_END
+	);
+}
+
+BOOL zfs_file_flush(zfs_file_t* hFile,int flags) 
+{
+	return FlushFileBuffers(
+		hFile
+	);
+}
+
+int zfs_file_getattr(zfs_file_t *hFile, zfs_file_attr_t *zfattr)
+{
+	/*LPBY_HANDLE_FILE_INFORMATION fileInfo;
+	BOOL retval = GetFileInformationByHandle(hFile, &fileInfo);
+	if(retval)
+	{*/
+	DWORD dwFileSize;
+	DWORD dwFileType;
+	dwFileSize = GetFileSize(hFile, NULL);
+	zfattr->zfa_size = dwFileSize;
+	dwFileType = GetFileType(hFile);
+	zfattr->zfa_type = dwFileType;
+	return 0;
+}
 int
 vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
           int x3, vnode_t *startvp/*, int fd*/)

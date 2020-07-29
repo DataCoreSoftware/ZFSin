@@ -105,6 +105,11 @@ zfs_file_close(zfs_file_t *fp)
 	//filp_close(fp, 0);
 }
 
+// need to implement read,write,pread,pwrite
+
+
+
+
 #if 0
 static ssize_t
 zfs_file_write_impl(zfs_file_t *fp, const void *buf, size_t count, loff_t *off)
@@ -171,55 +176,9 @@ zfs_file_write(zfs_file_t *fp, const void *buf, size_t count, ssize_t *resid)
 #endif
 }
 
-#if 0
-/*
- * Stateless write - os internal file pointer is not updated.
- *
- * fp -  pointer to file (pipe, socket, etc) to write to
- * buf - buffer to write
- * count - # of bytes to write
- * off - file offset to write to (only valid for seekable types)
- * resid -  pointer to count of unwritten bytes
- *
- * Returns 0 on success errno on failure.
- */
-int
-zfs_file_pwrite(zfs_file_t *fp, const void *buf, size_t count, loff_t off,
-    ssize_t *resid)
-{
-	ssize_t rc;
 
-	rc  = zfs_file_write_impl(fp, buf, count, &off);
-	if (rc < 0)
-		return (-rc);
 
-	if (resid) {
-		*resid = count - rc;
-	} else if (rc != count) {
-		return (EIO);
-	}
 
-	return (0);
-}
-
-static ssize_t
-zfs_file_read_impl(zfs_file_t *fp, void *buf, size_t count, loff_t *off)
-{
-#if defined(HAVE_KERNEL_READ_PPOS)
-	return (kernel_read(fp, buf, count, off));
-#else
-	mm_segment_t saved_fs;
-	ssize_t rc;
-
-	saved_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	rc = vfs_read(fp, (void __user *)buf, count, off);
-	set_fs(saved_fs);
-
-	return (rc);
-#endif
-}
 
 /*
  * Stateful read - use os internal file pointer to determine where to
@@ -232,9 +191,19 @@ zfs_file_read_impl(zfs_file_t *fp, void *buf, size_t count, loff_t *off)
  *
  * Returns 0 on success errno on failure.
  */
-int
-zfs_file_read(zfs_file_t *fp, void *buf, size_t count, ssize_t *resid)
+int zfs_file_read(zfs_file_t* fp, const void* buf, size_t count, ssize_t* resid)
 {
+	NTSTATUS ntstatus;
+	IO_STATUS_BLOCK ioStatusBlock;
+	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, NULL, NULL);
+	if (STATUS_SUCCESS != ntstatus)
+		return (EIO);
+	if (resid)
+	{
+		*resid = 0;
+	}
+	return (0);
+#if 0
 	loff_t off = fp->f_pos;
 	ssize_t rc;
 
@@ -246,11 +215,59 @@ zfs_file_read(zfs_file_t *fp, void *buf, size_t count, ssize_t *resid)
 
 	if (resid) {
 		*resid = count - rc;
-	} else if (rc != count) {
+	}
+	else if (rc != count) {
 		return (EIO);
 	}
 
 	return (0);
+#endif
+}
+
+/*
+ * Stateless write - os internal file pointer is not updated.
+ *
+ * fp -  pointer to file (pipe, socket, etc) to write to
+ * buf - buffer to write
+ * count - # of bytes to write
+ * off - file offset to write to (only valid for seekable types)
+ * resid -  pointer to count of unwritten bytes
+ *
+ * Returns 0 on success errno on failure.
+ */
+int
+zfs_file_pwrite(zfs_file_t* fp, const void* buf, size_t count, loff_t off,
+	ssize_t* resid)
+{
+	NTSTATUS ntstatus;
+	IO_STATUS_BLOCK ioStatusBlock;
+	LARGE_INTEGER offset = { 0 };
+	offset.LowPart = off;
+	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, &offset, NULL);
+	// reset fp to its original position
+	if (STATUS_SUCCESS != ntstatus)
+		return (EIO);
+	if (resid)
+	{
+		*resid = 0;
+	}
+	return (0);
+#if 0
+	ssize_t rc;
+
+	rc = zfs_file_write_impl(fp, buf, count, &off);
+	if (rc < 0)
+		return (-rc);
+
+	if (resid) {
+		*resid = count - rc;
+	}
+	else if (rc != count) {
+		return (EIO);
+	}
+
+	return (0);
+#endif
 }
 
 /*
@@ -265,9 +282,24 @@ zfs_file_read(zfs_file_t *fp, void *buf, size_t count, ssize_t *resid)
  * Returns 0 on success errno on failure.
  */
 int
-zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off,
-    ssize_t *resid)
+zfs_file_pread(zfs_file_t* fp, void* buf, size_t count, loff_t off,
+	ssize_t* resid)
 {
+	NTSTATUS ntstatus;
+	IO_STATUS_BLOCK ioStatusBlock;
+	LARGE_INTEGER offset = { 0 };
+	offset.LowPart = off;
+	/*FileInformationClass info;
+	ZwQueryInformationFile*/
+	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, &offset, NULL);
+	if (STATUS_SUCCESS != ntstatus)
+		return (EIO);
+	if (resid)
+	{
+		*resid = 0;
+	}
+	return (0);
+#if 0
 	ssize_t rc;
 
 	rc = zfs_file_read_impl(fp, buf, count, &off);
@@ -276,11 +308,33 @@ zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off,
 
 	if (resid) {
 		*resid = count - rc;
-	} else if (rc != count) {
+	}
+	else if (rc != count) {
 		return (EIO);
 	}
 
 	return (0);
+#endif
+}
+
+#if 0
+static ssize_t
+zfs_file_read_impl(zfs_file_t* fp, void* buf, size_t count, loff_t* off)
+{
+#if defined(HAVE_KERNEL_READ_PPOS)
+	return (kernel_read(fp, buf, count, off));
+#else
+	mm_segment_t saved_fs;
+	ssize_t rc;
+
+	saved_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	rc = vfs_read(fp, (void __user*)buf, count, off);
+	set_fs(saved_fs);
+
+	return (rc);
+#endif
 }
 
 /*
