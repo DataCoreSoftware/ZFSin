@@ -87,6 +87,9 @@ spa_config_load(void)
 	char *pathname;
 	struct _buf *file;
 	uint64_t fsize;
+	zfs_file_t fp;
+	zfs_file_attr_t zfa;
+	int err;
 
 #ifdef _KERNEL
 	if (zfs_autoimport_disable)
@@ -101,22 +104,23 @@ spa_config_load(void)
 	(void) snprintf(pathname, MAXPATHLEN, "%s%s",
 	    "", spa_config_path);
 
-	file = kobj_open_file("C:\\WINDOWS\\System32\\drivers\\zpool.cache");
+	err = zfs_file_open("C:\\WINDOWS\\System32\\drivers\\zpool.cache", O_RDONLY, 0, &fp);
 
 	kmem_free(pathname, MAXPATHLEN);
 
-	if (file == (struct _buf *)-1)
+	if (err)
 		return;
 
-	if (kobj_get_filesize(file, &fsize) != 0)
+	if (zfs_file_getattr(&fp, &zfa))
 		goto out;
 
+	fsize = zfa.zfa_size;
 	buf = kmem_alloc(fsize, KM_SLEEP);
 
 	/*
 	 * Read the nvlist from the file.
 	 */
-	if (kobj_read_file(file, buf, fsize, 0) < 0)
+	if (zfs_file_read(&fp, buf, fsize, NULL) < 0)
 		goto out;
 
 	/*
@@ -148,8 +152,7 @@ spa_config_load(void)
 out:
 	if (buf != NULL)
 		kmem_free(buf, fsize);
-
-	kobj_close_file(file);
+	zfs_file_close(&fp);
 }
 
 static void
@@ -191,8 +194,8 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 #ifdef _KERNEL
 	err = zfs_file_open(dp->scd_path, oflags, 0644, &fp);
         if (err == 0) {
-                err = zfs_file_write(fp, buf, buflen, NULL);
-                zfs_file_close(fp);
+                err = zfs_file_write(&fp, buf, buflen, NULL);
+                zfs_file_close(&fp);
         }
 #if 0
                 if (err == 0)

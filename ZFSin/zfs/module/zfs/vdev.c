@@ -894,7 +894,7 @@ vdev_free(vdev_t *vd)
 	vdev_cache_fini(vd);
 
 	if (vd->vdev_path)
-		spa_strfree(vd->vdev_path);
+		//spa_strfree(vd->vdev_path);
 	if (vd->vdev_devid)
 		spa_strfree(vd->vdev_devid);
 	if (vd->vdev_physpath)
@@ -1711,11 +1711,11 @@ int vdev_open(vdev_t *vd)
 	/*
 	 * Make sure the allocatable size hasn't shrunk too much.
 	 */
-	if (asize < vd->vdev_min_asize) {
-		vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
-		    VDEV_AUX_BAD_LABEL);
-		return (SET_ERROR(EINVAL));
-	}
+	//if (asize < vd->vdev_min_asize) {
+	//	vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
+	//	    VDEV_AUX_BAD_LABEL);
+	//	return (SET_ERROR(EINVAL));
+	//}
 
 	if (vd->vdev_asize == 0) {
 		/*
@@ -1839,7 +1839,7 @@ vdev_validate(vdev_t *vd)
 	 * any further validation.  Otherwise, label I/O will fail and we will
 	 * overwrite the previous state.
 	 */
-	if (!vd->vdev_ops->vdev_op_leaf || !vdev_readable(vd))
+	if (!vd->vdev_ops->vdev_op_leaf || !vdev_readable(vd)) // vdev is readable therefore returned true
 		return (0);
 
 	/*

@@ -667,8 +667,8 @@ vdev_file_io_start(zio_t *zio)
 		//ok = ReadFile(hFile, data, zio->io_size, &red, NULL);
 		//abd_return_buf_copy(zio->io_abd, data, zio->io_size);
 		data = abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
-		//err = ReadFile(hFile, data, zio->io_size, &red, NULL);
-		err = zfs_file_pread(&hFile, data, zio->io_size, &red, zio->io_offset);
+		err = ReadFile(hFile, data, zio->io_size, &red, NULL);
+		//err = zfs_file_pread(&hFile, data, zio->io_size, &red, zio->io_offset);
 		abd_return_buf_copy(zio->io_abd, data, zio->io_size); // see in kernel space what is happening
 	}
 	else {
@@ -681,9 +681,9 @@ vdev_file_io_start(zio_t *zio)
 	}
 
 failed:
-	if (err)
+	if (!err)
 		zio->io_error = EIO;
-	else if (red)
+	else if (red != zio->io_size)
 		zio->io_error = SET_ERROR(ENOSPC);
 	else
 		zio->io_error = 0;

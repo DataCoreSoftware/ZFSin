@@ -28,6 +28,7 @@
 #define	_SYS_VDEV_FILE_H
 
 #include <sys/vdev.h>
+#include <sys/zfs_file.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -41,6 +42,11 @@ extern "C" {
 	uint32_t	vf_vid;
 } vdev_file_t;
 #endif
+
+typedef struct vdev_file2 {
+		HANDLE vf_file;
+} vdev_file_t2;
+
 
 #ifdef	__cplusplus
 }

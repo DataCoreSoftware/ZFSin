@@ -50,11 +50,11 @@ zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fpp)
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK    ioStatusBlock;
 
-        mbstowcs(buf, path, sizeof (buf));
-        RtlInitUnicodeString(&uniName, buf);
+    mbstowcs(buf, path, sizeof (buf));
+    RtlInitUnicodeString(&uniName, buf);
 	InitializeObjectAttributes(&objAttr, &uniName,
-				OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-				NULL, NULL);
+			OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			NULL, NULL);
 
 	if(KeGetCurrentIrql() != PASSIVE_LEVEL)
 		return -1;
@@ -101,7 +101,7 @@ zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fpp)
 void
 zfs_file_close(zfs_file_t *fp)
 {
-	ZwClose(fp);
+	ZwClose(*fp);
 	//filp_close(fp, 0);
 }
 
@@ -149,7 +149,7 @@ zfs_file_write(zfs_file_t *fp, const void *buf, size_t count, ssize_t *resid)
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK ioStatusBlock;
 
-	ntstatus = ZwWriteFile(fp, NULL, NULL, NULL,
+	ntstatus = ZwWriteFile(*fp, NULL, NULL, NULL,
 			&ioStatusBlock, buf, count, NULL, NULL);
 
 	if (resid)
@@ -195,7 +195,7 @@ int zfs_file_read(zfs_file_t* fp, const void* buf, size_t count, ssize_t* resid)
 {
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK ioStatusBlock;
-	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, NULL, NULL);
+	ntstatus = ZwReadFile(*fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, NULL, NULL);
 	if (STATUS_SUCCESS != ntstatus)
 		return (EIO);
 	if (resid)
@@ -282,8 +282,8 @@ zfs_file_pwrite(zfs_file_t* fp, const void* buf, size_t count, loff_t off,
  * Returns 0 on success errno on failure.
  */
 int
-zfs_file_pread(zfs_file_t* fp, void* buf, size_t count, loff_t off,
-	ssize_t* resid)
+zfs_file_pread(zfs_file_t* fp, void* buf, DWORD count, DWORD* resid,
+	DWORD off)
 {
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK ioStatusBlock;
@@ -317,6 +317,102 @@ zfs_file_pread(zfs_file_t* fp, void* buf, size_t count, loff_t off,
 #endif
 }
 
+/*
+ * Sync file to disk
+ *
+ * filp - file pointer
+ * flags - O_SYNC and or O_DSYNC
+ *
+ * Returns 0 on success or error code of underlying sync call on failure.
+ */
+int
+zfs_file_fsync(zfs_file_t* filp, int flags)
+{
+	if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+		return -1;
+	IO_STATUS_BLOCK    ioStatusBlock;
+	NTSTATUS ntStatus;
+	ntStatus = ZwFlushBuffersFile(
+		*filp,
+		&ioStatusBlock
+	);
+	if (ntStatus != STATUS_SUCCESS) {
+		return -1;
+	}
+	return 0;
+#if 0
+	int datasync = 0;
+	int error;
+	int fstrans;
+
+	if (flags & O_DSYNC)
+		datasync = 1;
+
+	/*
+	 * May enter XFS which generates a warning when PF_FSTRANS is set.
+	 * To avoid this the flag is cleared over vfs_sync() and then reset.
+	 */
+	fstrans = __spl_pf_fstrans_check();
+	if (fstrans)
+		current->flags &= ~(__SPL_PF_FSTRANS);
+
+	error = -vfs_fsync(filp, datasync);
+
+	if (fstrans)
+		current->flags |= __SPL_PF_FSTRANS;
+
+	return (error);
+#endif
+}
+
+/*
+ * Get file attributes
+ *
+ * filp - file pointer
+ * zfattr - pointer to file attr structure
+ *
+ * Currently only used for fetching size and file mode.
+ *
+ * Returns 0 on success or error code of underlying getattr call on failure.
+ */
+int
+zfs_file_getattr(zfs_file_t* filp, zfs_file_attr_t* zfattr)
+{
+	FILE_STANDARD_INFORMATION fileInfo = { 0 };
+	IO_STATUS_BLOCK ioStatusBlock;
+	NTSTATUS ntStatus;
+	ntStatus = ZwQueryInformationFile(
+		*filp,
+		&ioStatusBlock,
+		&fileInfo,
+		sizeof(fileInfo),
+		FileNameInformation
+	);
+	if (ntStatus != STATUS_SUCCESS) {
+		return -1;
+	}
+	zfattr->zfa_size = fileInfo.EndOfFile.QuadPart;
+#if 0
+	struct kstat stat;
+	int rc;
+
+#if defined(HAVE_4ARGS_VFS_GETATTR)
+	rc = vfs_getattr(&filp->f_path, &stat, STATX_BASIC_STATS,
+		AT_STATX_SYNC_AS_STAT);
+#elif defined(HAVE_2ARGS_VFS_GETATTR)
+	rc = vfs_getattr(&filp->f_path, &stat);
+#else
+	rc = vfs_getattr(filp->f_path.mnt, filp->f_dentry, &stat);
+#endif
+	if (rc)
+		return (-rc);
+
+	zfattr->zfa_size = stat.size;
+	zfattr->zfa_mode = stat.mode;
+
+	return (0);
+#endif
+}
 #if 0
 static ssize_t
 zfs_file_read_impl(zfs_file_t* fp, void* buf, size_t count, loff_t* off)
@@ -361,73 +457,6 @@ zfs_file_seek(zfs_file_t *fp, loff_t *offp, int whence)
 	*offp = rc;
 
 	return (0);
-}
-
-/*
- * Get file attributes
- *
- * filp - file pointer
- * zfattr - pointer to file attr structure
- *
- * Currently only used for fetching size and file mode.
- *
- * Returns 0 on success or error code of underlying getattr call on failure.
- */
-int
-zfs_file_getattr(zfs_file_t *filp, zfs_file_attr_t *zfattr)
-{
-	struct kstat stat;
-	int rc;
-
-#if defined(HAVE_4ARGS_VFS_GETATTR)
-	rc = vfs_getattr(&filp->f_path, &stat, STATX_BASIC_STATS,
-	    AT_STATX_SYNC_AS_STAT);
-#elif defined(HAVE_2ARGS_VFS_GETATTR)
-	rc = vfs_getattr(&filp->f_path, &stat);
-#else
-	rc = vfs_getattr(filp->f_path.mnt, filp->f_dentry, &stat);
-#endif
-	if (rc)
-		return (-rc);
-
-	zfattr->zfa_size = stat.size;
-	zfattr->zfa_mode = stat.mode;
-
-	return (0);
-}
-
-/*
- * Sync file to disk
- *
- * filp - file pointer
- * flags - O_SYNC and or O_DSYNC
- *
- * Returns 0 on success or error code of underlying sync call on failure.
- */
-int
-zfs_file_fsync(zfs_file_t *filp, int flags)
-{
-	int datasync = 0;
-	int error;
-	int fstrans;
-
-	if (flags & O_DSYNC)
-		datasync = 1;
-
-	/*
-	 * May enter XFS which generates a warning when PF_FSTRANS is set.
-	 * To avoid this the flag is cleared over vfs_sync() and then reset.
-	 */
-	fstrans = __spl_pf_fstrans_check();
-	if (fstrans)
-		current->flags &= ~(__SPL_PF_FSTRANS);
-
-	error = -vfs_fsync(filp, datasync);
-
-	if (fstrans)
-		current->flags |= __SPL_PF_FSTRANS;
-
-	return (error);
 }
 
 /*

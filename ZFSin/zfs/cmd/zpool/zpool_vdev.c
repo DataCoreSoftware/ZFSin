@@ -1477,7 +1477,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 
 		char vdev_path[MAX_PATH];
 		sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
-
+		
 		/*
 		 * Update the path to refer to the partition.  The presence of
 		 * the 'whole_disk' field indicates to the CLI that we should

@@ -2922,7 +2922,7 @@ spa_ld_select_uberblock(spa_t *spa, spa_import_type_t type)
 	/*
 	 * Find the best uberblock.
 	 */
-	vdev_uberblock_load(rvd, ub, &label);
+	vdev_uberblock_load(rvd, ub, &label); // failing here couldn't find any uberblock
 
 	/*
 	 * If we weren't able to find a single valid uberblock, return failure.

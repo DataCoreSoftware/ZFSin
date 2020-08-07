@@ -22,30 +22,20 @@
 #ifndef	_SYS_ZFS_FILE_H
 #define	_SYS_ZFS_FILE_H
 
-#ifndef _KERNEL
-typedef struct zfs_file {
-	int f_fd;
-	int f_dump_fd;
-} zfs_file_t;
-#else
 typedef HANDLE zfs_file_t;
-#endif
 
-#if 0
 typedef struct zfs_file_attr {
-	uint64_t	zfa_size;	/* file size */
-	mode_t		zfa_mode;	/* file type */
-} zfs_file_attr_t;
-#else
-typedef struct zfs_file_attr {
-	DWORD zfa_size;
+	ULONGLONG zfa_size;
 	DWORD zfa_type;
 } zfs_file_attr_t;
-#endif
 
 int zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fp);
 void zfs_file_close(zfs_file_t *fp);
 int zfs_file_write(zfs_file_t *fp, const void *buf, size_t len, ssize_t *resid);
+int zfs_file_getattr(zfs_file_t* fp, zfs_file_attr_t* zfattr);
+int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid);
+int zfs_file_geomtery(zfs_file_t* hFile, zfs_file_attr_t* zattr);
+int zfs_file_pread(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead, DWORD* resid, DWORD offset);
 //int zfs_file_pwrite(zfs_file_t *fp, const void *buf, size_t len, loff_t off,
 //    ssize_t *resid);
 //int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid);

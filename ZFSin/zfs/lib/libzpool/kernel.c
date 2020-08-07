@@ -790,25 +790,38 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	return (0);
 }
 // create a new file if file not exist else open file on the basis of flags
-int zfs_file_open(const char *path, int flags, int mode, zfs_file_t **fpp)
+int zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fpp)
 {
 	wchar_t buf[PATH_MAX];
 	UNICODE_STRING uniName;
+	DWORD desiredAccess = 0;
+	DWORD dwCreationDisposition;
 	mbstowcs(buf, path, sizeof(buf));
+	if (flags == O_RDONLY)
+	{
+		desiredAccess = GENERIC_READ;
+		dwCreationDisposition = OPEN_EXISTING;
+	}
+
+	if (flags == O_WRONLY)
+	{
+		desiredAccess = GENERIC_READ | GENERIC_WRITE;
+		dwCreationDisposition = OPEN_ALWAYS | FILE_OVERWRITE_IF;
+	}
+
 	HANDLE hFile = CreateFileW(
 		buf,
-		GENERIC_READ | GENERIC_WRITE,
-		0,
+		desiredAccess,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
 		NULL,
-		FILE_OVERWRITE_IF,
+		OPEN_EXISTING,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL
 	);
-	if (hFile == INVALID_HANDLE_VALUE)
-	{
+	if (hFile == INVALID_HANDLE_VALUE) {
 		return E_FAIL;
 	}
-	*fpp = &hFile; 
+	*fpp = hFile; 
 	return 0;
 }
 
@@ -818,7 +831,7 @@ int zfs_file_read(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead, DWORD* resi
 	DWORD dwBytesRead;
 	HANDLE handle = hFile;
 	BOOL res = ReadFile(
-		hFile,
+		*hFile,
 		buf,
 		dwBytesToRead,
 		&dwBytesRead,
@@ -843,7 +856,7 @@ int zfs_file_write(zfs_file_t* hFile, void* buf, DWORD dwBytesToWrite, DWORD* re
 {
 	DWORD dwBytesWritten;
 	BOOL res = WriteFile(
-		hFile,
+		*hFile,
 		buf,
 		dwBytesToWrite,
 		&dwBytesWritten,
@@ -872,7 +885,7 @@ int zfs_file_pread(zfs_file_t* hFile, void* buf, DWORD dwBytesToRead,DWORD* resi
 	DWORD dwBytesRead;
 	OVERLAPPED ol = { .Offset = offset };
 	BOOL res = ReadFile(
-		hFile,
+		*hFile,
 		buf,
 		dwBytesToRead,
 		&dwBytesRead,
@@ -909,7 +922,7 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 	DWORD dwBytesWritten;
 	OVERLAPPED ol = { .Offset = offset };
 	BOOL res = WriteFile(
-		hFile,
+		*hFile,
 		buf,
 		dwBytesToWrite,
 		&dwBytesWritten,
@@ -919,7 +932,7 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 	{
 		OVERLAPPED ol2 = { .Offset = offset+split };
 		res = WriteFile(
-			hFile,
+			*hFile,
 			(char*)buf+split,
 			dwBytesToWrite-split,
 			&dwBytesWritten,
@@ -943,7 +956,7 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 
 void zfs_file_close(zfs_file_t* hFile)
 {
-	ASSERT(CloseHandle(hFile) == 0);
+	CloseHandle(*hFile);
 }
 /*ARGSUSED*/
 
@@ -951,7 +964,7 @@ DWORD zfs_file_off(zfs_file_t* hFile) // 1
 {
 	PLONG lpDistanceToMoveHigh;
 	return SetFilePointer(
-		hFile,
+		*hFile,
 		0L,
 		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move, if set to NULL this won't be used
 		FILE_CURRENT
@@ -962,7 +975,7 @@ DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
 {
 	PLONG lpDistanceToMoveHigh;
 	return SetFilePointer(
-		hFile,
+		*hFile,
 		offset,
 		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move
 		dwMoveMethod // FILE_BEGIN FILE_CURRENT FILE_END
@@ -972,24 +985,51 @@ DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
 BOOL zfs_file_flush(zfs_file_t* hFile,int flags) 
 {
 	return FlushFileBuffers(
-		hFile
+		*hFile
 	);
 }
 
 int zfs_file_getattr(zfs_file_t *hFile, zfs_file_attr_t *zfattr)
 {
-	/*LPBY_HANDLE_FILE_INFORMATION fileInfo;
-	BOOL retval = GetFileInformationByHandle(hFile, &fileInfo);
-	if(retval)
-	{*/
 	DWORD dwFileSize;
 	DWORD dwFileType;
-	dwFileSize = GetFileSize(hFile, NULL);
-	zfattr->zfa_size = dwFileSize;
-	dwFileType = GetFileType(hFile);
+	LARGE_INTEGER fSize;
+	if (GetFileSizeEx(*hFile, &fSize))
+	{
+		zfattr->zfa_size = fSize.QuadPart;
+	}
+	DWORD err = GetLastError();
+	dwFileType = GetFileType(*hFile);
 	zfattr->zfa_type = dwFileType;
 	return 0;
 }
+
+int zfs_file_geomtery(zfs_file_t* hFile, zfs_file_attr_t* zattr)
+{
+	BOOL bResult = FALSE;
+	DWORD junk = 0;
+	DISK_GEOMETRY pdg = { 0 };
+	bResult = DeviceIoControl(
+		*hFile,
+		IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		NULL,
+		0,
+		&pdg,
+		sizeof(pdg),
+		&junk,
+		(LPOVERLAPPED)NULL
+		);
+	if (bResult)
+	{
+		ULONGLONG DiskSize = (ULONGLONG)pdg.Cylinders.QuadPart * (ULONGLONG)pdg.TracksPerCylinder *
+			(ULONGLONG)pdg.SectorsPerTrack * (ULONGLONG)pdg.BytesPerSector;
+		zattr->zfa_size = DiskSize;
+		zattr->zfa_type = GetFileType(*hFile);
+		return 0;
+	}
+	return GetLastError();
+}
+
 int
 vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
           int x3, vnode_t *startvp/*, int fd*/)

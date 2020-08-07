@@ -866,7 +866,7 @@ abd_return_buf(abd_t *abd, void *buf, size_t n)
 		mutex_exit(&abd->abd_mutex);
 		ASSERT0(abd_cmp_buf(abd, buf, n));
 		mutex_enter(&abd->abd_mutex);
-		zio_buf_free(buf, n);
+		zio_buf_free(buf, n); // not able to free the buffer
 	}
 
 	(void) zfs_refcount_remove_many(&abd->abd_children, n, buf);
