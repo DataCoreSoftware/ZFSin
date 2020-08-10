@@ -4285,6 +4285,7 @@ dump_block_stats(spa_t *spa)
 	if (zcb->zcb_haderrors)
 		return (3);
 
+	umem_free(zcb);
 	return (0);
 }
 
