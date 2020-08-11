@@ -4278,6 +4278,7 @@ dump_block_stats(spa_t *spa)
 	}
 
 	(void) printf("\n");
+	umem_free(zcb, sizeof(zdb_cb_t));
 
 	if (leaks)
 		return (2);
@@ -4285,7 +4286,6 @@ dump_block_stats(spa_t *spa)
 	if (zcb->zcb_haderrors)
 		return (3);
 
-	umem_free(zcb);
 	return (0);
 }
 
