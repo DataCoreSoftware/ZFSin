@@ -22,12 +22,12 @@
 #ifndef	_SYS_ZFS_FILE_H
 #define	_SYS_ZFS_FILE_H
 
-#include <sys/types.h>
+#include <sys/types32.h>
 
 typedef HANDLE zfs_file_t;
 
 typedef struct zfs_file_attr {
-	ULONGLONG zfa_size;
+	uint64_t zfa_size;
 	DWORD zfa_type;
 } zfs_file_attr_t;
 
@@ -37,13 +37,10 @@ int zfs_file_write(zfs_file_t *fp, const void *buf, size_t len, ssize_t *resid);
 int zfs_file_getattr(zfs_file_t* fp, zfs_file_attr_t* zfattr);
 int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid);
 int zfs_file_geomtery(zfs_file_t* hFile, zfs_file_attr_t* zattr);
-int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, ULONGLONG off, ssize_t *resid);
-ULONGLONG zfs_file_off(zfs_file_t *fp);
-//int zfs_file_pwrite(zfs_file_t *fp, const void *buf, size_t len, loff_t off,
-//    ssize_t *resid);
-//int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid);
-//int zfs_file_pread(zfs_file_t *fp, void *buf, size_t len, loff_t off,
-//    ssize_t *resid);
+int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off, ssize_t *resid);
+int zfs_file_pwrite(zfs_file_t* fp, void* buf, size_t count, loff_t off, ssize_t* resid);
+loff_t zfs_file_off(zfs_file_t *fp);
+int zfs_file_fsync(zfs_file_t *hFile, int flags);
 
 /*
 int zfs_file_seek(zfs_file_t *fp, loff_t *offp, int whence);

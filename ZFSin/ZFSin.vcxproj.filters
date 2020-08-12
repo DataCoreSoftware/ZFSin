@@ -120,9 +120,6 @@
     <ClCompile Include="spl\module\spl\spl-kmem.c">
       <Filter>Source Files\SPL</Filter>
     </ClCompile>
-    <ClCompile Include="spl\module\spl\spl-kobj.c">
-      <Filter>Source Files\SPL</Filter>
-    </ClCompile>
     <ClCompile Include="spl\module\spl\spl-kstat.c">
       <Filter>Source Files\SPL</Filter>
     </ClCompile>

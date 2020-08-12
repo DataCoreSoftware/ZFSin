@@ -38,7 +38,6 @@
 #include <sys/zfeature.h>
 #include <sys/zfs_file.h>
 #ifdef _KERNEL
-#include <sys/kobj.h>
 #include <sys/zone.h>
 #else
 #include <stdlib.h>
@@ -206,6 +205,8 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 	err = zfs_file_open(dp->scd_path, oflags, 0644, &fp);
         if (err == 0) {
                 err = zfs_file_write(&fp, buf, buflen, NULL);
+				if(err == 0)
+					err = zfs_file_fsync(&fp,0);
                 zfs_file_close(&fp);
         }
 #if 0
@@ -262,7 +263,7 @@ spa_write_cachefile(spa_t *target, boolean_t removing, boolean_t postsysevent)
 
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 
-	if (/*rootdir == NULL ||*/ !(spa_mode_global & FWRITE))
+	if (/*rootdir == NULL ||*/ !(spa_mode_global & SPA_MODE_WRITE))
 		return;
 
 	/*

@@ -53,8 +53,8 @@
 #endif
 #include <sys/crypto/icp.h>
 #include <sys/zfs_file.h>
-#include<winternl.h>
-
+#include <winternl.h>
+#include <sys/types32.h>
 /*
  * Emulation of kernel services in userland.
  */
@@ -820,7 +820,7 @@ int zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fpp)
 		NULL
 	);
 	if (hFile == INVALID_HANDLE_VALUE) {
-		return E_FAIL;
+		return ENOENT;
 	}
 	*fpp = hFile; 
 	return 0;
@@ -838,12 +838,12 @@ int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid)
 		NULL
 	);
 	if (!res) {
-		return E_FAIL;
+		return EIO;
 	}
 	if (resid) {
 		*resid = len - dwBytesRead;
 	} else if (dwBytesRead != len) {
-		return E_FAIL;
+		return EIO;
 	}
 	return 0;
 }
@@ -859,48 +859,43 @@ int zfs_file_write(zfs_file_t *fp, const void *buf, size_t len, ssize_t *resid)
 		NULL
 	);
 	if (!res) {
-		return E_FAIL;
+		return EIO;
 	}
 	if (resid) {
 		*resid = len - dwBytesWritten;
 	} else if (len != dwBytesWritten) {
-		return E_FAIL;
+		return EIO;
 	}
 	return 0;
 }
 /*
-	Stateless read -> fp doesn't change with read operation
-	this func can be used only in case synchronous i/o 
+	Stateless read -> fp doesn't change with read operation 
 */
-int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, ULONGLONG off, ssize_t *resid)
+int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off, ssize_t *resid)
 {
 	DWORD dwBytesRead;
-	LARGE_INTEGER offset;
-
-	offset.QuadPart = off;
-	if (!SetFilePointerEx(*fp, offset, NULL, FILE_BEGIN))
-		return (EIO);
+	OVERLAPPED ol = { .Offset = off };
  
 	BOOL res = ReadFile(
 		*fp,
 		buf,
 		(DWORD)count,
 		&dwBytesRead,
-		NULL
+		&ol
 	);
 	if (!res)
-		return E_FAIL;
+		return EIO;
 	if (resid)
 		*resid = count - dwBytesRead;
 	else if (count != dwBytesRead)
-		return E_FAIL;
+		return EIO;
 	return 0;
 }
 
 /*
 	stateless write -> write at a given offset and os internal pointer is not updated
 */
-int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DWORD* resid, DWORD offset)
+int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, size_t count, loff_t offset, ssize_t *resid)
 {
 	/*
 	 * To simulate partial disk writes, we split writes into two
@@ -908,14 +903,14 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 	 * This is used by ztest to simulate realistic failure modes.
 	 */
 	int sectors,split;
-	sectors = dwBytesToWrite >> SPA_MINBLOCKSHIFT;
+	sectors = count >> SPA_MINBLOCKSHIFT;
 	split = (sectors > 0 ? rand() % sectors : 0) << SPA_MINBLOCKSHIFT;
 	DWORD dwBytesWritten;
 	OVERLAPPED ol = { .Offset = offset };
 	BOOL res = WriteFile(
 		*hFile,
 		buf,
-		dwBytesToWrite,
+		count,
 		&dwBytesWritten,
 		&ol
 	);
@@ -925,22 +920,22 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, DWORD dwBytesToWrite, DW
 		res = WriteFile(
 			*hFile,
 			(char*)buf+split,
-			dwBytesToWrite-split,
+			count-split,
 			&dwBytesWritten,
 			&ol2
 		);
 	}
 	if (!res)
 	{
-		return E_FAIL;
+		return EIO;
 	}
 	if (resid)
 	{
-		*resid = dwBytesToWrite - dwBytesWritten;
+		*resid = count - dwBytesWritten;
 	}
-	else if (dwBytesToWrite != dwBytesWritten)
+	else if (count != dwBytesWritten)
 	{
-		return E_FAIL;
+		return EIO;
 	}
 	return 0;
 }
@@ -951,7 +946,7 @@ void zfs_file_close(zfs_file_t* hFile)
 }
 /*ARGSUSED*/
 
-ULONGLONG zfs_file_off(zfs_file_t* hFile) // 1
+uint64_t zfs_file_off(zfs_file_t* hFile) // 1
 {
 	LARGE_INTEGER lpDistanceToMoveHigh;
 	LARGE_INTEGER off;
@@ -965,7 +960,7 @@ ULONGLONG zfs_file_off(zfs_file_t* hFile) // 1
 		FILE_CURRENT
 	);
 	if (!ret)
-		return E_FAIL;
+		return EFAULT;
 	return lpDistanceToMoveHigh.QuadPart;
 }
 
@@ -980,7 +975,7 @@ DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
 	);
 }
 
-BOOL zfs_file_flush(zfs_file_t* hFile,int flags) 
+int zfs_file_fsync(zfs_file_t* hFile, int flags) 
 {
 	return FlushFileBuffers(
 		*hFile
@@ -1018,10 +1013,9 @@ int zfs_file_geomtery(zfs_file_t* hFile, zfs_file_attr_t* zattr)
 		(LPOVERLAPPED)NULL
 		);
 	if (bResult)
-	{
-		ULONGLONG DiskSize = (ULONGLONG)pdg.Cylinders.QuadPart * (ULONGLONG)pdg.TracksPerCylinder *
-			(ULONGLONG)pdg.SectorsPerTrack * (ULONGLONG)pdg.BytesPerSector;
-		zattr->zfa_size = DiskSize;
+	{ 
+		zattr->zfa_size = (loff_t)pdg.Cylinders.QuadPart * (loff_t)pdg.TracksPerCylinder *
+			(loff_t)pdg.SectorsPerTrack * (loff_t)pdg.BytesPerSector;;
 		zattr->zfa_type = GetFileType(*hFile);
 		return 0;
 	}

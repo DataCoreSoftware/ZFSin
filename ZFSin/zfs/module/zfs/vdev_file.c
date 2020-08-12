@@ -333,7 +333,7 @@ skip_open:
 #ifdef _KERNEL
 	*max_psize = *psize = info.EndOfFile.QuadPart;
 #else
-	*max_psize = *psize = vd->vdev_win_length;;
+	*max_psize = *psize = vd->vdev_win_length;
 #endif
 	*ashift = SPA_MINBLOCKSHIFT;
 
@@ -467,6 +467,7 @@ vdev_file_io_start(zio_t *zio)
 {
     vdev_t *vd = zio->io_vd;
     ssize_t resid = 0;
+	vdev_file_t* vf = vd->vdev_tsd;
 
 
     if (zio->io_type == ZIO_TYPE_IOCTL) {
@@ -485,6 +486,9 @@ vdev_file_io_start(zio_t *zio)
                                           kcred, NULL);
                 vnode_put(vf->vf_vnode);
             }
+#else
+			zio->io_error = zfs_file_fsync(&vf->vf_handle,0); 
+			break;
 #endif
 			break;
         default:
@@ -519,8 +523,6 @@ vdev_file_io_start(zio_t *zio)
 
 
 	ASSERT(zio->io_size != 0);
-
-	vdev_file_t *vf = vd->vdev_tsd;
 	LARGE_INTEGER offset;
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
@@ -605,14 +607,12 @@ vdev_file_io_start(zio_t *zio)
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		data = abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
-		//ok = ReadFile(vf->vf_handle, data, zio->io_size, &red, NULL);
 		err = zfs_file_pread(&vf->vf_handle, data, zio->io_size, offset.QuadPart, &resid);
 		abd_return_buf_copy(zio->io_abd, data, zio->io_size);
 	} else {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		data = abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
-		//ok = WriteFile(vf->vf_handle, data, zio->io_size, &red, NULL);
-		// TODO err = zfs_file_pwrite(vf->vf_handle, data, zio->io_size, &resid, offset);
+		err = zfs_file_pwrite(&vf->vf_handle, data, zio->io_size, offset.QuadPart, &resid);
 		abd_return_buf_off(zio->io_abd, data,
 			0, zio->io_size, zio->io_abd->abd_size);
 	}

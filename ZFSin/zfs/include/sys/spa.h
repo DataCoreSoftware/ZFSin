@@ -1160,6 +1160,7 @@ extern void vdev_cache_stat_fini(void);
 /* Initialization and termination */
 extern void spa_init(int flags);
 extern void spa_fini(void);
+extern void spa_fini2(void);
 extern void spa_boot_init(void);
 
 /* properties */
@@ -1189,7 +1190,7 @@ _NOTE(CONSTCOND) } while (0)
 #define	dprintf_bp(bp, fmt, ...)
 #endif
 
-extern int spa_mode_global;			/* mode, e.g. FREAD | FWRITE */
+extern spa_mode_t spa_mode_global;			/* mode, e.g. FREAD | FWRITE */
 
 #ifdef	__cplusplus
 }

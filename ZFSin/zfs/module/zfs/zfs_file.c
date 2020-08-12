@@ -23,6 +23,7 @@
 #include <sys/zfs_file.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+#include <sys/spa.h>
 //#include <linux/falloc.h>
 //#include <linux/fs.h>
 //#include <linux/uaccess.h>
@@ -117,12 +118,7 @@ void
 zfs_file_close(zfs_file_t *fp)
 {
 	ZwClose(*fp);
-	//filp_close(fp, 0);
 }
-
-// need to implement read,write,pread,pwrite
-
-
 
 
 #if 0
@@ -257,7 +253,7 @@ zfs_file_pwrite(zfs_file_t* fp, const void* buf, size_t count, loff_t off,
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK ioStatusBlock;
 	LARGE_INTEGER offset = { 0 };
-	offset.LowPart = off;
+	offset.QuadPart = off;
 	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, &offset, NULL);
 	// reset fp to its original position
 	if (STATUS_SUCCESS != ntstatus)
@@ -305,9 +301,7 @@ zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off,
 	NTSTATUS ntstatus;
 	IO_STATUS_BLOCK ioStatusBlock;
 	LARGE_INTEGER offset = { 0 };
-	offset.LowPart = off;
-	/*FileInformationClass info;
-	ZwQueryInformationFile*/
+	offset.QuadPart = off;
 	ntstatus = ZwReadFile(fp, NULL, NULL, NULL, &ioStatusBlock, buf, count, &offset, NULL);
 	if (STATUS_SUCCESS != ntstatus)
 		return (EIO);
@@ -343,14 +337,14 @@ zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off,
  * Returns 0 on success or error code of underlying sync call on failure.
  */
 int
-zfs_file_fsync(zfs_file_t* filp, int flags)
+zfs_file_fsync(zfs_file_t* hFile, int flags)
 {
 	if (KeGetCurrentIrql() != PASSIVE_LEVEL)
 		return -1;
-	IO_STATUS_BLOCK    ioStatusBlock;
+	IO_STATUS_BLOCK		ioStatusBlock;
 	NTSTATUS ntStatus;
 	ntStatus = ZwFlushBuffersFile(
-		*filp,
+		*hFile,
 		&ioStatusBlock
 	);
 	if (ntStatus != STATUS_SUCCESS) {

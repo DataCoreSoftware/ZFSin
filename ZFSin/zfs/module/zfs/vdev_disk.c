@@ -228,14 +228,14 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	IO_STATUS_BLOCK iostatus;
 
 	ntstatus = ZwCreateFile(&dvd->vd_lh,
-		spa_mode(spa) == FREAD ? GENERIC_READ | SYNCHRONIZE : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
+		spa_mode(spa) == SPA_MODE_READ ? GENERIC_READ | SYNCHRONIZE : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
 		&ObjectAttributes,
 		&iostatus,
 		0,
 		FILE_ATTRIBUTE_NORMAL,
 		/* FILE_SHARE_WRITE | */ FILE_SHARE_READ,
 		FILE_OPEN,
-		FILE_SYNCHRONOUS_IO_NONALERT | (spa_mode(spa) == FREAD ? 0 : FILE_NO_INTERMEDIATE_BUFFERING),
+		FILE_SYNCHRONOUS_IO_NONALERT | (spa_mode(spa) == SPA_MODE_READ ? 0 : FILE_NO_INTERMEDIATE_BUFFERING),
 		NULL,
 		0);
 
@@ -321,6 +321,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	// Make disk readonly and offline, so that users can't partition/format it.
 	disk_exclusive(pTopDevice, TRUE);
+	spa_strfree(vdev_path);
 
 skip_open:
 
