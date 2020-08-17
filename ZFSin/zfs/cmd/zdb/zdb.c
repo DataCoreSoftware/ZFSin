@@ -2480,6 +2480,10 @@ dump_cachefile(const char *cachefile)
 		(void)snprintf(pathname, MAXPATHLEN, "%s\\%s",
 			getenv("SystemRoot"), cachefile + 12);
 	}
+	else
+	{
+		(void)snprintf(pathname,MAXPATHLEN,"%s",cachefile);
+	}
 
 	err = zfs_file_open(pathname, O_RDONLY, 0, &hFile);
 	if (err)
@@ -2497,7 +2501,7 @@ dump_cachefile(const char *cachefile)
 		exit(1);
 	}
 
-	if ((buf = (char*)malloc(attr.zfa_size)) == NULL) {
+	if ((buf = (char*)umem_alloc(attr.zfa_size,UMEM_NOFAIL)) == NULL) {
 		(void) fprintf(stderr, "failed to allocate %llu bytes\n",
 			(u_longlong_t)statbuf.st_size);
 		exit(1);
@@ -2517,7 +2521,7 @@ dump_cachefile(const char *cachefile)
 		exit(1);
 	}
 
-	free(buf);
+	umem_free(buf,attr.zfa_size);
 
 	dump_nvlist(config, 0);
 
@@ -4295,15 +4299,20 @@ dump_block_stats(spa_t *spa)
 	}
 
 	(void) printf("\n");
+	int err = 0;
 
-	if (leaks)
-		return (2);
+	if (leaks){
+		err = 2;
+		goto exit;
+	}
 
-	if (zcb->zcb_haderrors)
-		return (3);
-
+	if (zcb->zcb_haderrors){
+		err = 3;
+		goto exit;
+	}
+exit:
 	umem_free(zcb, sizeof(zdb_cb_t));
-	return (0);
+	return (err);
 }
 
 typedef struct zdb_ddt_entry {

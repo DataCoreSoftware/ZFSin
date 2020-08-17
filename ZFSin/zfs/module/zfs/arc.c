@@ -4095,15 +4095,6 @@ arc_evict_state_impl(multilist_t* ml, int idx, arc_buf_hdr_t* marker,
 	IMPLY(bytes < 0, bytes == ARC_EVICT_ALL);
 
 	mls = multilist_sublist_lock(ml, idx);
-	// traverse multisublist and see whether this list is valid
-	//list_t node = mls->mls_list;
-	//list_node_t head = node.list_head;
-	//int cnt = 0;
-	//while (head.list_next != NULL)
-	//{
-	//	head = *(head.list_next);
-	//	++cnt;
-	//}
 
 	for (hdr = multilist_sublist_prev(mls, marker); hdr != NULL;
 	    hdr = multilist_sublist_prev(mls, marker)) {
@@ -4222,14 +4213,6 @@ arc_evict_state(arc_state_t *state, uint64_t spa, int64_t bytes,
 	multilist_t *ml = state->arcs_list[type];
 	int num_sublists;
 	arc_buf_hdr_t **markers;
-
-	//multilist_t *ml2 = state->arcs_list[type];
-
-	/*while (ml2->ml_sublists->mls_list.list_head != NULL)
-	{
-		ml2->ml_sublists->mls_list.list_head = ml2->ml_sublists->mls_list.list_head.list_next;
-	}*/
-	
 
 	IMPLY(bytes < 0, bytes == ARC_EVICT_ALL);
 
@@ -4351,12 +4334,10 @@ arc_flush_state(arc_state_t *state, uint64_t spa, arc_buf_contents_t type,
     boolean_t retry)
 {
 	uint64_t evicted = 0;
-	uint64_t ref_count = zfs_refcount_count(&state->arcs_esize[type]);
-	while (ref_count > 0) {
+	while (zfs_refcount_count(&state->arcs_esize[type]) != 0) {
 		evicted += arc_evict_state(state, spa, ARC_EVICT_ALL, type);
 		if (!retry)
 			break;
-		ref_count = zfs_refcount_count(&state->arcs_esize[type]);
 	}
 	return (evicted);
 }
@@ -7864,6 +7845,8 @@ arc_fini(void)
 	}
 	mutex_exit(&arc_reclaim_lock);
 	/* Use B_TRUE to ensure *all* buffers are evicted */
+	arc_flush(NULL, B_TRUE);
+	arc_dead = B_TRUE;
 
 	if (arc_ksp != NULL) {
 		kstat_delete(arc_ksp);
@@ -7873,9 +7856,6 @@ arc_fini(void)
 	mutex_destroy(&arc_reclaim_lock);
 	cv_destroy(&arc_reclaim_thread_cv);
 	cv_destroy(&arc_reclaim_waiters_cv);
-
-	arc_flush(NULL, B_FALSE);
-	arc_dead = B_TRUE;
 
 	arc_state_fini();
 	buf_fini();
@@ -9288,17 +9268,6 @@ l2arc_stop(void)
 	mutex_exit(&l2arc_feed_thr_lock);
 }
 
-void
-l2arc_stop2(void)
-{
-	mutex_enter(&l2arc_feed_thr_lock);
-	cv_signal(&l2arc_feed_thr_cv);	/* kick thread out of startup */
-	l2arc_thread_exit = 1;
-	while (l2arc_thread_exit != 0)
-		cv_wait(&l2arc_feed_thr_cv, &l2arc_feed_thr_lock);
-	mutex_exit(&l2arc_feed_thr_lock);
-}
-
 
 #ifdef _WIN32
 #undef ZDB_DEBUG
@@ -9458,7 +9427,7 @@ arc_abd_move_thread(void *notused)
 {
 	callb_cpr_t cpr;
 #ifdef _KERNEL
-	clock_t wait_time = SEC2NSEC(60);
+	ULONGLONG wait_time = SEC2NSEC(60);
 	const int64_t threshold = physmem * 5LL / 100LL;
 #else
 	ULONGLONG wait_time = SEC2NSEC(5);

@@ -874,8 +874,9 @@ int zfs_file_write(zfs_file_t *fp, const void *buf, size_t len, ssize_t *resid)
 int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off, ssize_t *resid)
 {
 	DWORD dwBytesRead;
-	OVERLAPPED ol = { .Offset = off };
- 
+	OVERLAPPED ol = { 0 };
+	ol.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+	ol.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
 	BOOL res = ReadFile(
 		*fp,
 		buf,
@@ -895,7 +896,7 @@ int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off, ssize_t 
 /*
 	stateless write -> write at a given offset and os internal pointer is not updated
 */
-int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, size_t count, loff_t offset, ssize_t *resid)
+int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, size_t count, loff_t off, ssize_t *resid)
 {
 	/*
 	 * To simulate partial disk writes, we split writes into two
@@ -906,17 +907,22 @@ int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, size_t count, loff_t off
 	sectors = count >> SPA_MINBLOCKSHIFT;
 	split = (sectors > 0 ? rand() % sectors : 0) << SPA_MINBLOCKSHIFT;
 	DWORD dwBytesWritten;
-	OVERLAPPED ol = { .Offset = offset };
+	OVERLAPPED ol = { 0 };
+	ol.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+	ol.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
 	BOOL res = WriteFile(
 		*hFile,
 		buf,
-		count,
+		split,
 		&dwBytesWritten,
 		&ol
 	);
 	if (res)
 	{
-		OVERLAPPED ol2 = { .Offset = offset+split };
+		OVERLAPPED ol2 = { 0 };
+		off += split;
+		ol2.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+		ol2.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
 		res = WriteFile(
 			*hFile,
 			(char*)buf+split,
