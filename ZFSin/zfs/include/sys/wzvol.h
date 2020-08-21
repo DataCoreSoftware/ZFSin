@@ -35,10 +35,10 @@
 
 
 
-#define VENDOR_ID                   L"OpenZFS "
-#define VENDOR_ID_ascii             "OpenZFS "
-#define PRODUCT_ID                  L"WinZVOL         "
-#define PRODUCT_ID_ascii            "WinZVOL         "
+#define VENDOR_ID                   L"DataCore "
+#define VENDOR_ID_ascii             "DataCore "
+#define PRODUCT_ID                  L"ILDC            "
+#define PRODUCT_ID_ascii            "ILDC            "
 #define PRODUCT_REV                 L"1.00"
 #define PRODUCT_REV_ascii           "1.00"
 #define MP_TAG_GENERAL              'LOVZ'
