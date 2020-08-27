@@ -208,7 +208,7 @@ extern void zk_thread_exit(void);
 extern kthread_t *zk_thread_create(caddr_t stk, size_t  stksize,
 	thread_func_t func, void *arg, size_t len,
 	proc_t *pp, int state, pri_t pri, int detachstate);
-extern void zk_thread_join(pthread_t tid);
+extern int zk_thread_join(pthread_t tid);
 
 #define	kpreempt_disable()	((void)0)
 #define	kpreempt_enable()	((void)0)
@@ -603,8 +603,10 @@ extern void delay(clock_t ticks);
 #define	CRED()		NULL
 
 #define	ptob(x)		((x) * PAGESIZE)
+#define	NN_NUMBUF_SZ	(6)
 
 extern uint64_t physmem;
+extern char* random_path;
 
 //extern int highbit(ulong_t i);
 #define highbit highbit64
@@ -728,6 +730,7 @@ void ksiddomain_rele(ksiddomain_t *);
 
 #define TS_MAGIC                0x72f158ab4261e538ull
 #define TS_RUN                  0x00000002
+#define	TS_JOINABLE				0x00000004
 #define TS_STACK_MIN            PTHREAD_STACK_MIN
 #define TS_STACK_MAX            (256 * 1024)
 

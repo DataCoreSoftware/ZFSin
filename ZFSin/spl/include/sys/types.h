@@ -35,6 +35,7 @@
 typedef enum { B_FALSE = 0, B_TRUE = 1 }	boolean_t;
 typedef short				pri_t;
 typedef int int32_t;
+typedef unsigned int		    uint_t;
 typedef unsigned long			ulong;
 typedef unsigned long			ulong_t;
 typedef unsigned long long		uint64_t;

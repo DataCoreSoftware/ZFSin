@@ -112,5 +112,10 @@ extern FILE *wosix_fdopen(int fildes, const char *mode);
 #define fdopen	wosix_fdopen
 #undef  pipe
 #define pipe	wosix_pipe
+#undef clock_gettime
+#define clock_gettime wosix_clock_gettime
+
+#undef CLOCK_REALTIME
+#define CLOCK_REALTIME 0 // dummy value
 
 #endif /* WOSIX_HEADER */

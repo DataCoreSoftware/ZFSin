@@ -227,13 +227,13 @@ zk_thread_exit(void)
 	pthread_exit((void *)TS_MAGIC);
 }
 
-void
+int
 zk_thread_join(kt_did_t tid)
 {
 	void *ret;
-
-	pthread_join(tid, &ret);
+	int r = pthread_join(tid, &ret);
 	VERIFY3P(ret, ==, (void *)TS_MAGIC);
+	return r;
 }
 
 /*
