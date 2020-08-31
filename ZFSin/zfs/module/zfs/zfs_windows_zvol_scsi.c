@@ -45,6 +45,7 @@
 //#include <wmistr.h>
 //#include <wdf.h>
 //#include <hbaapi.h>
+#include <sys/zfs_context.h>
 #include <sys/wzvol.h>
 //#include <sys/wzvolwmi.h>
 
@@ -93,6 +94,7 @@
  * when the refcnt reaches 0 it is safe to free the remove lock cb. 
  */
 extern wzvolDriverInfo STOR_wzvolDriverInfo;
+extern taskq_t *storport_taskq;
 
 inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
 static inline void wzvol_decref_target(wzvolContext* zvc) 
@@ -678,7 +680,7 @@ ScsiOpWrite(
 /*                                                                                                */     
 /**************************************************************************************************/     
 UCHAR
-ScsiReadWriteSetup(
+ScsiReadWriteSetupNotPassive(
 	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
 	__in PSCSI_REQUEST_BLOCK  pSrb,
 	__in MpWkRtnAction        WkRtnAction,
@@ -720,6 +722,26 @@ ScsiReadWriteSetup(
 
 	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiReadWriteSetup.
+
+UCHAR
+ScsiReadWriteSetup(
+	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
+	__in PSCSI_REQUEST_BLOCK  pSrb,
+	__in MpWkRtnAction        WkRtnAction,
+	__in PUCHAR               pResult
+)
+{
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL)
+		return ScsiReadWriteSetupNotPassive(pHBAExt, pSrb, WkRtnAction, pResult);
+	else {
+		PHW_SRB_EXTENSION pSrbExt = pSrb->SrbExtension;
+		pMP_WorkRtnParms pWkRtnParms = &pSrbExt->WkRtnParms;
+		taskq_init_ent(&pWkRtnParms->ent);
+		taskq_dispatch_ent(storport_taskq, wzvol_WkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+		*pResult = ResultQueued;
+		return SRB_STATUS_SUCCESS;
+	}
+}
 
 /**************************************************************************************************/     
 /*                                                                                                */     

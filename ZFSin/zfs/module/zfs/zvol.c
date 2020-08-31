@@ -90,9 +90,11 @@
 
 #include "zfs_namecheck.h"
 
+unsigned int zvol_threads = 32;
 uint64_t zvol_inhibit_dev = 0;
 dev_info_t zfs_dip_real = { 0 };
 dev_info_t *zfs_dip = &zfs_dip_real;
+taskq_t *storport_taskq;
 extern int zfs_major;
 extern int zfs_bmajor;
 
@@ -2840,7 +2842,13 @@ zvol_busy(void)
 int
 zvol_init(void)
 {
+	int threads = MIN(MAX(zvol_threads, 1), 1024);
+
 	dprintf("zvol_init\n");
+	storport_taskq = taskq_create(ZVOL_DRIVER, threads, maxclsyspri,
+					threads * 2, INT_MAX, 0);
+	if (storport_taskq == NULL)
+		return (-ENOMEM);
 	VERIFY(ddi_soft_state_init(&zfsdev_state, sizeof (zfs_soft_state_t),
 	    1) == 0);
 #ifdef illumos
@@ -2858,4 +2866,5 @@ zvol_fini(void)
 	mutex_destroy(&zfsdev_state_lock);
 #endif
 	ddi_soft_state_fini(&zfsdev_state);
+	taskq_destroy(storport_taskq);
 }
