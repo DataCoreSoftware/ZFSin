@@ -671,6 +671,21 @@ ScsiOpWrite(
     return status;
 }                                                     // End ScsiOpWrite.
 
+VOID
+wzvol_TaskQueuingWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	pMP_WorkRtnParms        pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+
+	taskq_init_ent(&pWkRtnParms->ent);
+	taskq_dispatch_ent(storport_taskq, wzvol_WkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+}
+
 /**************************************************************************************************/     
 /*                                                                                                */     
 /* This routine does the setup for reading or writing. The reading/writing could be effected      */     
@@ -680,7 +695,7 @@ ScsiOpWrite(
 /*                                                                                                */     
 /**************************************************************************************************/     
 UCHAR
-ScsiReadWriteSetupNotPassive(
+ScsiReadWriteSetup(
 	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
 	__in PSCSI_REQUEST_BLOCK  pSrb,
 	__in MpWkRtnAction        WkRtnAction,
@@ -716,32 +731,12 @@ ScsiReadWriteSetupNotPassive(
 
 	// Queue work item, which will run in the System process.
 
-	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
+	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
 
 	*pResult = ResultQueued;                          // Indicate queuing.
 
 	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiReadWriteSetup.
-
-UCHAR
-ScsiReadWriteSetup(
-	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
-	__in PSCSI_REQUEST_BLOCK  pSrb,
-	__in MpWkRtnAction        WkRtnAction,
-	__in PUCHAR               pResult
-)
-{
-	if(KeGetCurrentIrql() != PASSIVE_LEVEL)
-		return ScsiReadWriteSetupNotPassive(pHBAExt, pSrb, WkRtnAction, pResult);
-	else {
-		PHW_SRB_EXTENSION pSrbExt = pSrb->SrbExtension;
-		pMP_WorkRtnParms pWkRtnParms = &pSrbExt->WkRtnParms;
-		taskq_init_ent(&pWkRtnParms->ent);
-		taskq_dispatch_ent(storport_taskq, wzvol_WkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
-		*pResult = ResultQueued;
-		return SRB_STATUS_SUCCESS;
-	}
-}
 
 /**************************************************************************************************/     
 /*                                                                                                */     
