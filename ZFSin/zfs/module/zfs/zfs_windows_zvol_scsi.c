@@ -45,6 +45,7 @@
 //#include <wmistr.h>
 //#include <wdf.h>
 //#include <hbaapi.h>
+#include <sys/zfs_context.h>
 #include <sys/wzvol.h>
 //#include <sys/wzvolwmi.h>
 
@@ -93,6 +94,7 @@
  * when the refcnt reaches 0 it is safe to free the remove lock cb. 
  */
 extern wzvolDriverInfo STOR_wzvolDriverInfo;
+extern taskq_t *storport_taskq;
 
 inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
 static inline void wzvol_decref_target(wzvolContext* zvc) 
@@ -669,6 +671,21 @@ ScsiOpWrite(
     return status;
 }                                                     // End ScsiOpWrite.
 
+VOID
+wzvol_TaskQueuingWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	pMP_WorkRtnParms        pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+
+	taskq_init_ent(&pWkRtnParms->ent);
+	taskq_dispatch_ent(storport_taskq, wzvol_WkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+}
+
 /**************************************************************************************************/     
 /*                                                                                                */     
 /* This routine does the setup for reading or writing. The reading/writing could be effected      */     
@@ -714,7 +731,7 @@ ScsiReadWriteSetup(
 
 	// Queue work item, which will run in the System process.
 
-	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
+	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
 
 	*pResult = ResultQueued;                          // Indicate queuing.
 
