@@ -686,23 +686,17 @@ ScsiReadWriteSetup(
 )
 {
 	PCDB                         pCdb = (PCDB)pSrb->Cdb;
-	PHW_SRB_EXTENSION			pSrbExt = pSrb->SrbExtension;
+	PHW_SRB_EXTENSION			pSrbExt = (PHW_SRB_EXTENSION)pSrb->SrbExtension;
 	ULONG                        startingSector,
 		sectorOffset;
 	USHORT                       numBlocks;
+#ifdef CREATE_IO_THREAD
+#else
 	pMP_WorkRtnParms             pWkRtnParms = &pSrbExt->WkRtnParms;
-
+#endif
 	ASSERT(pSrb->DataBuffer != NULL);
 
 	*pResult = ResultDone;                            // Assume no queuing.
-
-	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
-
-	pWkRtnParms->pHBAExt = pHBAExt;
-	pWkRtnParms->pSrb = pSrb;
-	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
-
-	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
 	pSrbExt->pSrbBackPtr = pSrb;
@@ -712,9 +706,31 @@ ScsiReadWriteSetup(
 	InsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt,&pSrbExt->QueuedForProcessing);
 	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
 
+#ifdef CREATE_IO_THREAD
+
+	pSrbExt->pHBAExt = pHBAExt;
+	pSrbExt->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
+
+    InterlockedIncrement(&pHBAExt->IoCount);
+
+    ExInterlockedInsertTailList(&pHBAExt->IoQueue, pSrbExt, &pHBAExt->IoQueueLock);
+
+    KeSetEvent(&pHBAExt->IoThreadEvent, IO_DISK_INCREMENT, FALSE);
+#else
+
+	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
+
+	pWkRtnParms->pHBAExt = pHBAExt;
+	pWkRtnParms->pSrb = pSrb;
+	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
+
+	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+
 	// Queue work item, which will run in the System process.
 
 	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
+
+#endif
 
 	*pResult = ResultQueued;                          // Indicate queuing.
 
@@ -780,6 +796,156 @@ ScsiOpReportLuns(
 
     return status;
 }                                                     // End ScsiOpReportLuns.
+
+#ifdef CREATE_IO_THREAD
+
+UCHAR RunSrb(PHW_SRB_EXTENSION pSrbExt)
+{
+	PSCSI_REQUEST_BLOCK pSrb = (PSCSI_REQUEST_BLOCK)pSrbExt->pSrbBackPtr;
+	PCDB pCdb = (PCDB)pSrb->Cdb;
+	pHW_HBA_EXT pHBAExt = pSrbExt->pHBAExt;
+	UCHAR SrbStatus;
+
+	ULONGLONG                 startingSector=0ULL, sectorOffset=0ULL;
+	int flags = 0;
+	zvol_state_t *zv = NULL;
+
+	// Find out if that SRB has been cancelled and busy it back if it was.
+	KIRQL oldIrql;
+	KeAcquireSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, &oldIrql);
+	RemoveEntryList(&pSrbExt->QueuedForProcessing);
+	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
+	if (pSrbExt->Cancelled) {
+		SrbStatus = SRB_STATUS_BUSY;
+		goto Done;
+	}
+	ASSERT(pSrb->DataBuffer != NULL);
+
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	if (zv == NULL) {
+		SrbStatus = SRB_STATUS_NO_DEVICE;
+		goto Done;
+	}
+
+	if (pSrb->CdbLength == 10) {
+		startingSector = (ULONG)pCdb->CDB10.LogicalBlockByte3 |
+			pCdb->CDB10.LogicalBlockByte2 << 8 |
+			pCdb->CDB10.LogicalBlockByte1 << 16 |
+			pCdb->CDB10.LogicalBlockByte0 << 24;
+		if (pCdb->CDB10.ForceUnitAccess)
+			flags |= ZVOL_WRITE_SYNC;
+	}
+	else if (pSrb->CdbLength == 16) {
+		REVERSE_BYTES_QUAD(&startingSector, pCdb->CDB16.LogicalBlock);
+		if (pCdb->CDB16.ForceUnitAccess)
+			flags |= ZVOL_WRITE_SYNC;
+	}
+	else {
+		SrbStatus = SRB_STATUS_ERROR;
+		goto Done;
+	}
+
+	sectorOffset = startingSector * MP_BLOCK_SIZE;
+
+	//dprintf("Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", pSrbExt->Action, startingSector, sectorOffset);
+	//dprintf("pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
+
+	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
+		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
+		SrbStatus = SRB_STATUS_INVALID_REQUEST;
+		goto Done;
+	}
+
+	// Create an uio for the IO. If we can possibly embed
+	// the uio in some Extension to this IO, we could
+	// save the allocation here.
+	uio_t *uio = uio_create(1, 0, UIO_SYSSPACE,
+		ActionRead == pSrbExt->Action ? UIO_READ : UIO_WRITE);
+	if (uio == NULL) {
+		dprintf("%s: out of memory.\n", __func__);
+		SrbStatus = SRB_STATUS_INVALID_REQUEST;
+		goto Done;
+	}
+	VERIFY0(uio_addiov(uio, (user_addr_t)pSrb->DataBuffer,
+		pSrb->DataTransferLength));
+	uio_setoffset(uio, sectorOffset);
+
+	/* Call ZFS to read/write data */
+	if (ActionRead == pSrbExt->Action) {           
+		SrbStatus = zvol_read(zv, uio, flags);
+	} else {                                           
+		SrbStatus = zvol_write(zv, uio, flags);
+	}
+	
+	if (SrbStatus == 0)
+		SrbStatus = SRB_STATUS_SUCCESS;
+
+	uio_free(uio);
+
+Done:
+	if (zv)
+		wzvol_unlock_target(zv);
+
+	pSrbExt->pSrbBackPtr->SrbStatus = SrbStatus;
+	StorPortNotification(RequestComplete, pHBAExt, pSrbExt->pSrbBackPtr);
+
+	InterlockedDecrement(&pHBAExt->IoCount);
+}
+
+VOID StartIoThread(pHW_HBA_EXT pHBAExt)
+{
+    PHW_SRB_EXTENSION pSrbExt;
+
+	// Must be:
+	// LOW_REALTIME_PRIORITY <= priority <= HIGH_PRIORITY
+	// No time slice, waiting unless there is some IO to do.
+	// Can be cranked up to, say, (HIGH_PRIORITY-5).
+	// Should help in the thread seeing ZFS IO requests as soon as they are available, and also in ZFS specific CPU bound ops. 
+	KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
+
+	dprintf("%s++\n", __func__);
+
+	for(;;)
+	{
+		KeWaitForSingleObject(&pHBAExt->IoThreadEvent, Executive, KernelMode, FALSE, NULL);
+
+		pSrbExt = NULL;
+
+		while((pSrbExt = (PHW_SRB_EXTENSION)ExInterlockedRemoveHeadList(&pHBAExt->IoQueue,
+																		&pHBAExt->IoQueueLock)) != NULL)
+			RunSrb(pSrbExt);
+
+		if(pHBAExt->IoThreadExit)
+			break;
+	}
+
+	dprintf("%s--\n", __func__);
+
+	PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+VOID EndIoThread(pHW_HBA_EXT pHBAExt)
+{
+	PETHREAD ThreadObject;
+
+	if(NT_SUCCESS(ObReferenceObjectByHandle(pHBAExt->IoThreadHandle, THREAD_ALL_ACCESS,
+						*PsThreadType, KernelMode, (PVOID *)&ThreadObject, NULL)))
+	{
+		pHBAExt->IoThreadExit = TRUE;
+
+		KeSetEvent(&pHBAExt->IoThreadEvent, IO_NO_INCREMENT, FALSE);
+
+		KeWaitForSingleObject(ThreadObject, Executive, KernelMode, FALSE, NULL);
+
+		ObDereferenceObject(ThreadObject);
+	}
+
+	ZwClose(pHBAExt->IoThreadHandle);
+
+	pHBAExt->IoThreadHandle = NULL;
+}
+
+#else
 
 VOID
 wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
@@ -902,4 +1068,5 @@ wzvol_GeneralWkRtn(
 
 	wzvol_WkRtn(pWkParms);                                // Do the actual work.
 }                                                     // End MpGeneralWkRtn().
+#endif
 

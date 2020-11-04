@@ -110,8 +110,11 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 
 	hwInitData.DeviceExtensionSize = sizeof(HW_HBA_EXT);
 	hwInitData.SpecificLuExtensionSize = sizeof(HW_LU_EXTENSION);
+#ifdef CREATE_IO_THREAD
+	hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION);
+#else
 	hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION) + IoSizeofWorkItem(); // see MP_WorkRtnParms structure.
-
+#endif
 	hwInitData.TaggedQueuing = TRUE;
 	hwInitData.AutoRequestSense = TRUE;
 	hwInitData.MultipleRequestPerLu = TRUE;
@@ -246,6 +249,22 @@ wzvol_HwFindAdapter(
 	InitializeWmiContext(pHBAExt);
 
 	//*pBAgain = FALSE;  // should not touch this.
+
+#ifdef CREATE_IO_THREAD
+	KeInitializeEvent(&pHBAExt->IoThreadEvent, SynchronizationEvent, FALSE);
+	InitializeListHead(&pHBAExt->IoQueue);
+	KeInitializeSpinLock(&pHBAExt->IoQueueLock);
+
+	pHBAExt->IoThreadExit = FALSE;
+	pHBAExt->IoCount = 0;
+
+	if(! NT_SUCCESS(PsCreateSystemThread(&pHBAExt->IoThreadHandle, 0, NULL, NULL,
+										NULL, (PKSTART_ROUTINE)StartIoThread, pHBAExt)))
+		status = SP_RETURN_ERROR;
+
+	if (status != SP_RETURN_FOUND && pHBAExt->IoThreadHandle != NULL)
+		EndIoThread(pHBAExt);
+#endif
 
 	return status;
 }
@@ -656,6 +675,17 @@ wzvol_HwStartIo(
 	NTSTATUS                  status;
 	UCHAR                     Result = ResultDone;
 
+#ifdef CREATE_IO_THREAD
+	if(NULL == pHBAExt->IoThreadHandle)
+	{
+		Srb->SrbStatus = SRB_STATUS_NO_HBA;
+
+		StorPortNotification(RequestComplete, pHBAExt, pSrb);
+
+		return TRUE;
+	}
+#endif
+
 	dprintf(
 		"MpHwStartIo:  SCSI Request Block = %!SRB!\n",
 		pSrb);
@@ -1004,6 +1034,10 @@ wzvol_HwFreeAdapterResources(__in pHW_HBA_EXT pHBAExt)
 	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->DrvInfoLock, SaveIrql);
 #endif
 
+#endif
+
+#ifdef CREATE_IO_THREAD
+	EndIoThread(pHBAExt);
 #endif
 
 	if (STOR_HBAExt == pHBAExt)

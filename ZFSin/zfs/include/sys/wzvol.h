@@ -145,6 +145,8 @@ typedef struct _MP_DEVICE_LIST {
 
 #define LUNInfoMax 8
 
+#define CREATE_IO_THREAD
+
 typedef struct _HW_HBA_EXT {                          // Adapter device-object extension allocated by StorPort.
 	LIST_ENTRY                     List;              // Pointers to next and previous HW_HBA_EXT objects.
 	LIST_ENTRY                     LUList;            // Pointers to HW_LU_EXTENSION objects.
@@ -168,6 +170,14 @@ typedef struct _HW_HBA_EXT {                          // Adapter device-object e
 	UCHAR                          ProductId[17];
 	UCHAR                          ProductRevision[5];
 
+#ifdef CREATE_IO_THREAD
+  HANDLE         IoThreadHandle;
+  KEVENT         IoThreadEvent;
+  BOOLEAN        IoThreadExit;
+  LIST_ENTRY     IoQueue;
+  KSPIN_LOCK     IoQueueLock;
+  LONG           IoCount;
+#endif
 
 	BOOLEAN                        bDontReport;       // TRUE => no Report LUNs.
 	BOOLEAN                        bReportAdapterDone;
@@ -210,6 +220,8 @@ typedef enum {
 	ActionWrite
 } MpWkRtnAction;
 
+#ifdef CREATE_IO_THREAD
+#else
 typedef struct _MP_WorkRtnParms {
 	pHW_HBA_EXT          pHBAExt;
 	PSCSI_REQUEST_BLOCK  pSrb;
@@ -218,13 +230,20 @@ typedef struct _MP_WorkRtnParms {
 	ULONG                SecondsToDelay;
 	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure: keep at the end of this block (dynamically allocated).
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
+#endif
 
 typedef struct _HW_SRB_EXTENSION {
 	SCSIWMI_REQUEST_CONTEXT WmiRequestContext;
 	LIST_ENTRY  QueuedForProcessing;
 	volatile ULONG Cancelled;
 	PSCSI_REQUEST_BLOCK pSrbBackPtr;
+
+#ifdef CREATE_IO_THREAD
+	pHW_HBA_EXT          pHBAExt;
+	MpWkRtnAction        Action;
+#else
 	MP_WorkRtnParms WkRtnParms; // keep at the end of this block (pQueueWorkItem dynamically allocated). 
+#endif
 } HW_SRB_EXTENSION, *PHW_SRB_EXTENSION;
 
 enum ResultType {
@@ -428,6 +447,11 @@ ScsiReadWriteSetup(
 	__in PUCHAR               pResult
 );
 
+#ifdef CREATE_IO_THREAD
+UCHAR RunSrb(PHW_SRB_EXTENSION pSrbExt);
+VOID StartIoThread(pHW_HBA_EXT pHBAExt);
+VOID EndIoThread(pHW_HBA_EXT pHBAExt);
+#else
 VOID
 wzvol_GeneralWkRtn(
 	__in PVOID,
@@ -438,6 +462,7 @@ wzvol_ThreadWkRtn(__in PVOID);
 
 VOID
 wzvol_WkRtn(IN PVOID);
+#endif
 
 VOID
 wzvol_CompleteIrp(
