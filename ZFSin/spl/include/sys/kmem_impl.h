@@ -292,7 +292,7 @@ extern "C" {
     /*
      * Per CPU cache data
      */
-    typedef struct kmem_cpu_cache {
+    typedef struct DECLSPEC_CACHEALIGN kmem_cpu_cache {
         kmutex_t	cc_lock;	/* protects this cpu's local cache */
         uint64_t	cc_alloc;	/* allocations from this cpu */
         uint64_t	cc_free;	/* frees to this cpu */
@@ -304,7 +304,7 @@ extern "C" {
         short		cc_magsize;	/* number of rounds in a full mag */
         short		cc_dump_rounds;	/* dump time copy of cc_rounds */
         short		cc_dump_prounds; /* dump time copy of cc_prounds */
-        char		cc_pad[KMEM_CPU_PAD]; /* for nice alignment */
+        //char		cc_pad[KMEM_CPU_PAD]; /* for nice alignment */
     } kmem_cpu_cache_t;
 
     /*
@@ -451,12 +451,13 @@ extern "C" {
 
     } ;
 
-	typedef struct kmem_cpu_log_header {
+	typedef struct DECLSPEC_CACHEALIGN kmem_cpu_log_header {
 		kmutex_t			clh_lock;
 		char				*clh_current;
 		uint32_t				clh_avail;
 		int					clh_chunk;
 		int					clh_hits;
+		/*
 #if defined (SPL_DEBUG_MUTEX)
 		char				clh_pad[128 - sizeof (kmutex_t) - sizeof (char *) -
 							sizeof (uint32_t) - 2 * sizeof (int)];
@@ -464,6 +465,7 @@ extern "C" {
 		char				clh_pad[128 - sizeof (kmutex_t) - sizeof (char *) -
 							sizeof (uint32_t) - 2 * sizeof (int)];
 #endif
+		*/
 	} kmem_cpu_log_header_t;
 
 	typedef struct kmem_log_header {

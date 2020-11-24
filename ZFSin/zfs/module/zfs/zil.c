@@ -2047,8 +2047,8 @@ zil_get_commit_list(zilog_t *zilog)
 		 * to the zl_itx_commit_list we must commit it to disk even
 		 * if it's unnecessary (i.e. the txg was synced).
 		 */
-		ASSERT(zilog_is_dirty_in_txg(zilog, txg) ||
-		    spa_freeze_txg(zilog->zl_spa) != UINT64_MAX);
+		//ASSERT(zilog_is_dirty_in_txg(zilog, txg) ||
+		 //   spa_freeze_txg(zilog->zl_spa) != UINT64_MAX);
 		list_move_tail(commit_list, &itxg->itxg_itxs->i_sync_list);
 
 		mutex_exit(&itxg->itxg_lock);

@@ -739,19 +739,24 @@ uint_t taskq_smtbf = UINT_MAX;    /* mean time between injected failures */
 /*
  * Schedule a task specified by func and arg into the task queue entry tqe.
  */
+/* we now use a spinlock to queue/dequeue so no need to hold the tq_lock
+ for that (performance and queueing at dispatch from sp/di interfaces)
+//ASSERT(MUTEX_HELD(&tq->tq_lock));				
+*/
 #define	TQ_DO_ENQUEUE(tq, tqe, func, arg, front) {			\
-	ASSERT(MUTEX_HELD(&tq->tq_lock));				\
 	_NOTE(CONSTCOND)						\
+	tqe->tqent_func = (func);					\
+	tqe->tqent_arg = (arg);						\
+	mutex_enter(&tq->tq_qdeq);\
 	if (front) {							\
 		TQ_PREPEND(tq->tq_task, tqe);				\
 	} else {							\
 		TQ_APPEND(tq->tq_task, tqe);				\
 	}								\
-	tqe->tqent_func = (func);					\
-	tqe->tqent_arg = (arg);						\
 	tq->tq_tasks++;							\
 	if (tq->tq_tasks - tq->tq_executed > tq->tq_maxtasks)		\
 		tq->tq_maxtasks = (int)(tq->tq_tasks - tq->tq_executed);	\
+	mutex_exit(&tq->tq_qdeq);\
 	cv_signal(&tq->tq_dispatch_cv);					\
 	DTRACE_PROBE2(taskq__enqueue, taskq_t *, tq, taskq_ent_t *, tqe); \
 }
@@ -780,6 +785,8 @@ taskq_constructor(void *buf, void *cdrarg, int kmflags)
 	bzero(tq, sizeof (taskq_t));
 
 	mutex_init(&tq->tq_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&tq->tq_qdeq, NULL, MUTEX_SPIN, NULL);
+
 	rw_init(&tq->tq_threadlock, NULL, RW_DEFAULT, NULL);
 	cv_init(&tq->tq_dispatch_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&tq->tq_exit_cv, NULL, CV_DEFAULT, NULL);
@@ -1031,11 +1038,14 @@ taskq_ent_exists(taskq_t *tq, task_func_t func, void *arg)
 	taskq_ent_t	*tqe;
 
 	ASSERT(MUTEX_HELD(&tq->tq_lock));
-
+	mutex_enter(&tq->tq_qdeq);
 	for (tqe = tq->tq_task.tqent_next; tqe != &tq->tq_task;
 	    tqe = tqe->tqent_next)
-		if ((tqe->tqent_func == func) && (tqe->tqent_arg == arg))
+		if ((tqe->tqent_func == func) && (tqe->tqent_arg == arg)) {
+			mutex_exit(&tq->tq_qdeq);
 			return (1);
+		}
+	mutex_exit(&tq->tq_qdeq);
 	return (0);
 }
 
@@ -1290,14 +1300,11 @@ taskq_dispatch_ent(taskq_t *tq, task_func_t func, void *arg, uint_t flags,
 	/*
 	 * Enqueue the task to the underlying queue.
 	 */
-	mutex_enter(&tq->tq_lock);
-
 	if (flags & TQ_FRONT) {
 		TQ_ENQUEUE_FRONT(tq, tqe, func, arg);
 	} else {
 		TQ_ENQUEUE(tq, tqe, func, arg);
 	}
-	mutex_exit(&tq->tq_lock);
 }
 
 /*
@@ -1572,9 +1579,14 @@ taskq_thread(void *arg)
 				}
 			}
 		}
+
+		// Effective dequeuing of the tqe.
+		mutex_enter(&tq->tq_qdeq);
 		if ((tqe = tq->tq_task.tqent_next) == &tq->tq_task) {
+			mutex_exit(&tq->tq_qdeq);
 			if (--tq->tq_active == 0)
 				cv_broadcast(&tq->tq_wait_cv);
+
 			(void) taskq_thread_wait(tq, &tq->tq_lock,
 			    &tq->tq_dispatch_cv, &cprinfo, -1);
 			tq->tq_active++;
@@ -1583,6 +1595,7 @@ taskq_thread(void *arg)
 
 		tqe->tqent_prev->tqent_next = tqe->tqent_next;
 		tqe->tqent_next->tqent_prev = tqe->tqent_prev;
+		mutex_exit(&tq->tq_qdeq);
 		mutex_exit(&tq->tq_lock);
 
 		/*

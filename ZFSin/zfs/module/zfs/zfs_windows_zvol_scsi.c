@@ -59,6 +59,8 @@
 
 #include <sys/zvol.h>
 
+#define USE_TASKQ_ZVOL 1
+
 // Verbose SCSI output
 //#undef dprintf
 //#define dprintf
@@ -704,7 +706,6 @@ ScsiReadWriteSetup(
 	pWkRtnParms->pSrb = pSrb;
 	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
 
-	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
 	pSrbExt->pSrbBackPtr = pSrb;
@@ -714,10 +715,14 @@ ScsiReadWriteSetup(
 	InsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt,&pSrbExt->QueuedForProcessing);
 	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
 
-	// Queue work item, which will run in the System process.
-
-	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
-
+#ifndef USE_TASKQ_ZVOL
+	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, spzvol_WorkItemRtn, NormalWorkQueue, pWkRtnParms);
+#else
+	VOID spzvol_TaskRtn(__in PVOID pWkParms);
+	taskq_init_ent(&pWkRtnParms->ent);
+	taskq_dispatch_ent(zvol_taskq, spzvol_TaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+#endif
 	*pResult = ResultQueued;                          // Indicate queuing.
 
 	return SRB_STATUS_SUCCESS;
@@ -783,8 +788,9 @@ ScsiOpReportLuns(
     return status;
 }                                                     // End ScsiOpReportLuns.
 
-VOID
-wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
+VOID spzvol_TaskRtn(
+	__in PVOID           pWkParms          // Parm list 
+)
 {
 	pMP_WorkRtnParms          pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
 	pHW_HBA_EXT               pHBAExt = pWkRtnParms->pHBAExt;
@@ -846,13 +852,10 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	// Create an uio for the IO. If we can possibly embed
 	// the uio in some Extension to this IO, we could
 	// save the allocation here.
-	uio_t *uio = uio_create(1, 0, UIO_SYSSPACE,
+	uio_t* uio = &pWkRtnParms->uioBlock;
+	uio_init_ent(uio, pWkRtnParms->iovecBlock, 1, 0, UIO_SYSSPACE,
 		ActionRead == pWkRtnParms->Action ? UIO_READ : UIO_WRITE);
-	if (uio == NULL) {
-		dprintf("%s: out of memory.\n", __func__);
-		status = SRB_STATUS_INVALID_REQUEST;
-		goto Done;
-	}
+
 	VERIFY0(uio_addiov(uio, (user_addr_t)pSrb->DataBuffer,
 		pSrb->DataTransferLength));
 	uio_setoffset(uio, sectorOffset);
@@ -867,8 +870,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	if (status == 0)
 		status = SRB_STATUS_SUCCESS;
 
-	uio_free(uio);
-
 Done:
 	if (zv)
 		wzvol_unlock_target(zv);
@@ -880,9 +881,9 @@ Done:
 	StorPortNotification(RequestComplete, pHBAExt, pSrb);
 }                                                     // End MpWkRtn().
 
-
+// used if not USE_TASKQ_ZVOL
 VOID
-wzvol_GeneralWkRtn(
+spzvol_WorkItemRtn(
 	__in PVOID           pDummy,           // Not used.
 	__in PVOID           pWkParms          // Parm list pointer.
 )
@@ -901,9 +902,8 @@ wzvol_GeneralWkRtn(
 
 		KeDelayExecutionThread(KernelMode, TRUE, &delay);
 	}
-
-	wzvol_WkRtn(pWkParms);                                // Do the actual work.
-}                                                     // End MpGeneralWkRtn().
+	spzvol_TaskRtn(pWkParms);                         // Do the actual work.
+}
 
 /*
 ** ZFS ZVOLDI 
@@ -911,16 +911,21 @@ wzvol_GeneralWkRtn(
 */
 
 VOID
-bzvol_ReadWriteTaskRtn(
+dizvol_TaskRtn(
 	__in PVOID           pWkParms          // Parm list 
 )
 {
-	NTSTATUS Status;
 	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
 	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
-	uio_t* uio = pWkRtnParms->pUio;
 	int iores;
 
+	uio_t* uio = &pWkRtnParms->uioBlock;
+	uio_init_ent(uio, pWkRtnParms->iovecBlock, 1, 0, UIO_SYSSPACE,
+		ActionRead == pWkRtnParms->Action ? UIO_READ : UIO_WRITE);
+	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
+		pIo->Length));
+	uio_setoffset(uio, pIo->ByteOffset);
+	
 	/* Call ZFS to read/write data */
 	if (ActionRead == pWkRtnParms->Action) {
 		iores = zvol_read(pWkRtnParms->zv, uio, 0);
@@ -932,11 +937,10 @@ bzvol_ReadWriteTaskRtn(
 	if (pIo->Cb) {
 		pIo->Cb(pIo, iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL, TRUE);
 	}
-	uio_free(uio);
 	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
 }
 
-VOID bzvol_TaskQueuingWkRtn(
+VOID dizvol_WorkItemRtn(
 	__in PVOID           pDummy,           // Not used.	
 	__in PVOID           pWkParms          // Parm list 
 )
@@ -947,34 +951,7 @@ VOID bzvol_TaskQueuingWkRtn(
 
 	UNREFERENCED_PARAMETER(pDummy);
 	IoUninitializeWorkItem(pWI);
-
-	// Create an uio for the IO. If we can possibly embed
-	// the uio in some Extension to this IO, we could
-	// save the allocation here.
-	uio_t* uio = uio_create(1, 0, UIO_SYSSPACE,
-		ActionRead == pWkRtnParms->Action ? UIO_READ : UIO_WRITE);
-	if (uio == NULL) {
-		dprintf("%s: out of memory.\n", __func__);
-		if (pIo->Cb) {
-			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, TRUE);
-		}
-		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
-		return;
-	}
-	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
-		pIo->Length));
-	uio_setoffset(uio, pIo->ByteOffset);
-
-	pWkRtnParms->pUio = uio;
-
-	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
-		taskq_init_ent(&pWkRtnParms->ent);
-		taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
-	} else {
-		// bypass the taskq and do everything under workitem thread context.
-		bzvol_ReadWriteTaskRtn(pWkRtnParms);
-	}
-	// workitem freed inside bzvol_ReadWriteTaskRtn
+	dizvol_TaskRtn(pWkParms);
 }
 
 NTSTATUS
@@ -997,13 +974,15 @@ DiReadWriteSetup(
 	pWkRtnParms->zv = zv;
 	pWkRtnParms->Action = action;
 
-	// SSV-19147: cannot use taskq queuing at dispatch. must queue a work item to do it.
-	// since taskq queueing involves a possibly waiting mutex we do not want to slow down the caller so 
-	// perform taskq queuing always in the workitem.
+#ifndef USE_TASKQ_ZVOL
 	extern PDEVICE_OBJECT ioctlDeviceObject;
 	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
 	IoInitializeWorkItem(ioctlDeviceObject, pWI);
-	IoQueueWorkItem(pWI, bzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
+	IoQueueWorkItem(pWI, dizvol_WorkItemRtn, NormalWorkQueue, pWkRtnParms);
+#else	
+	taskq_init_ent(&pWkRtnParms->ent);
+	taskq_dispatch_ent(zvol_taskq, dizvol_TaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+#endif
 	return STATUS_PENDING; // queued up.
 }
 

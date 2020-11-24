@@ -16,14 +16,14 @@ enum {
 	CV_MAX_EVENTS = 2
 };
 
-struct cv {
-	KEVENT kevent[CV_MAX_EVENTS]; // signal event, broadcast event
-	KSPIN_LOCK waiters_count_lock;
-	uint32_t waiters_count;
+typedef struct DECLSPEC_CACHEALIGN cv {
 	uint32_t initialised; // Just used as sanity
-};
+	uint32_t waiters_count;
+	void* locks[CV_MAX_EVENTS];
+	KEVENT kevent[CV_MAX_EVENTS]; // signal event, broadcast event
+} kcondvar_t;
 
-typedef struct cv  kcondvar_t;
+//typedef struct cv  kcondvar_t;
 
 #define PRIBIO 1
 #define PCATCH 2

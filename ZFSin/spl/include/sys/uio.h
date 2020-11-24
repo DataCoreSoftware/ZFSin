@@ -94,7 +94,7 @@ typedef struct uio {
 
 
 #if defined(_KERNEL) || defined(_FAKE_KERNEL)
-
+void uio_init_ent(uio_t* pUio, iovec_t* pVec, int iovcount, off_t offset, int spacetype, int iodirection);
 uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection);
 void uio_free(uio_t *uio);
 int uio_addiov(uio_t *uio, user_addr_t baseaddr, user_size_t length);

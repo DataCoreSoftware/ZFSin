@@ -34,6 +34,20 @@
 
 #include <sys/uio.h>
 
+// uio_init_ent: initializes a preallocated entry.
+void uio_init_ent(uio_t *pUio, iovec_t *pVec, int iovcount, off_t offset, int spacetype, int iodirection)
+{
+	memset(pUio, 0, sizeof(*pUio));
+	if (iovcount && pVec) {
+		memset(pVec, 0, iovcount * sizeof(*pVec));
+		pUio->uio_iov = pVec;
+		pUio->uio_max_iovs = iovcount;
+	}
+
+	pUio->uio_segflg = spacetype;
+	pUio->uio_offset = offset;
+	pUio->uio_rw = iodirection;
+}
 
 uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection)
 {

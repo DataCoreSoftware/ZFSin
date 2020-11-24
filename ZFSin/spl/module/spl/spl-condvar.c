@@ -41,13 +41,15 @@ void spl_wdlist_settime(void *mpleak, uint64_t value);
 #define CONDVAR_INIT 0x12345678
 
 void
-spl_cv_init(kcondvar_t *cvp, char *name, kcv_type_t type, void *arg)
+spl_cv_init(kcondvar_t* cvp, char* name, kcv_type_t type, void* arg)
 {
-	(void) cvp;	(void) name; (void) type; (void) arg;
+	(void)cvp;	(void)name; (void)type; (void)arg;
 	//DbgBreakPoint();
 	KeInitializeEvent(&cvp->kevent[CV_SIGNAL], SynchronizationEvent, FALSE);
 	KeInitializeEvent(&cvp->kevent[CV_BROADCAST], NotificationEvent, FALSE);
-//	KeInitializeSpinLock(&cvp->waiters_count_lock);
+	cvp->locks[CV_SIGNAL] = &cvp->kevent[CV_SIGNAL];
+	cvp->locks[CV_BROADCAST] = &cvp->kevent[CV_BROADCAST];
+
 	cvp->waiters_count = 0;
 	cvp->initialised = CONDVAR_INIT;
 }
@@ -70,14 +72,11 @@ spl_cv_signal(kcondvar_t *cvp)
 {
 	if (cvp->initialised != CONDVAR_INIT)
 		panic("%s: not initialised", __func__);
-	KIRQL oldIrq;
 
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	uint32_t have_waiters = cvp->waiters_count > 0;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (have_waiters)
-		KeSetEvent(&cvp->kevent[CV_SIGNAL], 0, FALSE);
+	// some instances of condvar do not signal with the mutex held so we can't safely rely on waiters_count to be
+	// sure someone is waiting and then signal: we have to signal when requested to do so.
+	//if (cvp->waiters_count > 0)
+	KeSetEvent(cvp->locks[CV_SIGNAL], EVENT_INCREMENT, FALSE);
 }
 
 // WakeConditionVariable or WakeAllConditionVariable function.
@@ -87,14 +86,11 @@ spl_cv_broadcast(kcondvar_t *cvp)
 {
 	if (cvp->initialised != CONDVAR_INIT)
 		panic("%s: not initialised", __func__);
-	KIRQL oldIrq;
 
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	int have_waiters = cvp->waiters_count > 0;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (have_waiters)
-		KeSetEvent(&cvp->kevent[CV_BROADCAST], 0, FALSE);
+	// some instances of condvar do not signal with the mutex held so we can't safely rely on waiters_count to be
+	// sure someone is waiting and then signal: we have to signal when requested to do so.
+	//if (cvp->waiters_count > 0)
+	KeSetEvent(cvp->locks[CV_BROADCAST], EVENT_INCREMENT, FALSE);
 }
 
 /*
@@ -108,36 +104,20 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 	if (cvp->initialised != CONDVAR_INIT)
 		panic("%s: not initialised", __func__);
 
+#ifdef SPL_DEBUG_MUTEX
     if (msg != NULL && msg[0] == '&')
         ++msg;  /* skip over '&' prefixes */
-#ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, 0);
 #endif
-	KIRQL oldIrq;
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
+	cvp->waiters_count++; // MUST be done before mutex_exit().
 	mutex_exit(mp);
-	void *locks[CV_MAX_EVENTS] = { &cvp->kevent[CV_SIGNAL], &cvp->kevent[CV_BROADCAST] };
-	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
-
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	// If last listener, clear BROADCAST event. (Even if it was SIGNAL
-	// overclearing will not hurt?)
-	if (cvp->waiters_count == 1)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
-
-	atomic_dec_32(&cvp->waiters_count);
-
-	//int last_waiter =
-	//	result == STATUS_WAIT_0 + CV_BROADCAST
-	//	&& cvp->waiters_count == 0;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	//if (last_waiter)
-	//	KeClearEvent(&cvp->kevent[CV_BROADCAST]);
-
+	result = KeWaitForMultipleObjects(2, cvp->locks, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
 	mutex_enter(mp);
+
+	// If last listener, clear BROADCAST event. 
+	if (--cvp->waiters_count == 0)// && (result == STATUS_WAIT_0 + CV_BROADCAST))
+		KeClearEvent(cvp->locks[CV_BROADCAST]);
+
 
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
@@ -184,28 +164,15 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, 0);
 #endif
-	KIRQL oldIrq;
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
+	cvp->waiters_count++; // MUST be done before mutex_exit().
 	mutex_exit(mp);
-
-	void *locks[CV_MAX_EVENTS] = { &cvp->kevent[CV_SIGNAL], &cvp->kevent[CV_BROADCAST] };
-	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
-
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	
-	int last_waiter =
-		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 1;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (last_waiter)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
-
-	atomic_dec_32(&cvp->waiters_count);
-
+	result = KeWaitForMultipleObjects(2, cvp->locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
 	mutex_enter(mp);
+	
+	// If last listener, clear BROADCAST event. 
+	if (--cvp->waiters_count == 0)// && (result == STATUS_WAIT_0 + CV_BROADCAST))
+		KeClearEvent(cvp->locks[CV_BROADCAST]);
+
 
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
@@ -250,28 +217,14 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, 0);
 #endif
-	KIRQL oldIrq;
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
+	cvp->waiters_count++; // MUST be done before mutex_exit().
 	mutex_exit(mp);
-
-	void *locks[CV_MAX_EVENTS] = { &cvp->kevent[CV_SIGNAL], &cvp->kevent[CV_BROADCAST] };
-	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
-
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	
-	int last_waiter =
-		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 1;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (last_waiter)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
-	
-	atomic_dec_32(&cvp->waiters_count);
-
+	result = KeWaitForMultipleObjects(2, cvp->locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
 	mutex_enter(mp);
+	
+	// If last listener, clear BROADCAST event. 
+	if (--cvp->waiters_count == 0)// && (result == STATUS_WAIT_0 + CV_BROADCAST))
+		KeClearEvent(cvp->locks[CV_BROADCAST]);
 
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());

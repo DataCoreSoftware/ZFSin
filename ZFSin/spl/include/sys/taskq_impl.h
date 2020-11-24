@@ -143,6 +143,7 @@ struct taskq {
 	proc_t	*tq_proc;	/* process for taskq threads */
 	int		tq_cpupart;	/* cpupart id bound to */
 	uint_t		tq_DC;		/* duty cycle for SDC */
+	kmutex_t	tq_qdeq; // for queueing and dequeueing items only
 
 	/*
 	 * Statistics.
@@ -153,7 +154,7 @@ struct taskq {
 	uint64_t	tq_executed;	/* Total # of tasks executed */
 	int		tq_maxtasks;	/* Max number of tasks in the queue */
 	int		tq_tcreates;
-	int		tq_tdeaths;
+	int		tq_tdeaths;	
 };
 
 /* Special form of taskq dispatch that uses preallocated entries. */

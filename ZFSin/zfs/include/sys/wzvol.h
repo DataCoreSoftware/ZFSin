@@ -217,11 +217,12 @@ typedef struct _MP_WorkRtnParms {
 	PEPROCESS            pReqProcess;
 	MpWkRtnAction        Action;
 	ULONG                SecondsToDelay;
-	PVOID				 pUio;
 	/* ZFS ZVOLDI */
 	void* zv;
 	zfsiodesc_t ioDesc;
 	taskq_ent_t          ent;
+	uio_t				 uioBlock;
+	iovec_t				 iovecBlock[1]; // we always use 1 iovec for StorPort/DI I/Os
 	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure: keep at the end of this block (dynamically allocated).
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
 
@@ -435,15 +436,10 @@ ScsiReadWriteSetup(
 );
 
 VOID
-wzvol_GeneralWkRtn(
+spzvol_WorkItemRtn(
 	__in PVOID,
 	__in PVOID
 );
-ULONG
-wzvol_ThreadWkRtn(__in PVOID);
-
-VOID
-wzvol_WkRtn(IN PVOID);
 
 VOID
 wzvol_CompleteIrp(

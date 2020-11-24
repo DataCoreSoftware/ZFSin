@@ -49,6 +49,10 @@ extern "C" {
 /*
  * Increment target
  */
+static inline void atomic_inc_16(volatile ushort_t* target)
+{
+    InterlockedIncrement16((volatile SHORT*)target);
+}
 static inline void atomic_inc_32(volatile uint32_t *target)
 {
 	InterlockedIncrement((volatile LONG *)target);
@@ -71,6 +75,10 @@ static inline int64_t atomic_inc_64_nv(volatile uint64_t *target)
 /*
  * Decrement target
  */
+static inline void atomic_dec_16(volatile ushort_t* target)
+{
+    InterlockedDecrement16((volatile SHORT*)target);
+}
 static inline void atomic_dec_32(volatile uint32_t *target)
 {
 	InterlockedDecrement((volatile LONG *)target);
@@ -151,6 +159,11 @@ atomic_sub_64_nv(volatile uint64_t *target, int64_t delta)
  */
 
 static inline uint32_t
+atomic_cas_16(volatile ushort_t* _target, ushort_t _cmp, ushort_t _new)
+{
+    return InterlockedCompareExchange16((volatile SHORT*)_target, _new, _cmp);
+}
+static inline uint32_t
 atomic_cas_32(volatile uint32_t *_target, uint32_t _cmp, uint32_t _new)
 {
 	return InterlockedCompareExchange((volatile LONG *)_target, _new, _cmp);
@@ -161,6 +174,11 @@ atomic_cas_64(volatile uint64_t *_target, uint64_t _cmp, uint64_t _new)
 	return InterlockedCompareExchange64((volatile LONG64 *)_target, _new, _cmp);
 }
 
+static inline ushort_t
+atomic_swap_16(volatile ushort_t* _target, ushort_t _new)
+{
+    return InterlockedExchange16((volatile SHORT*)_target, _new);
+}
 static inline uint64_t
 atomic_swap_64(volatile uint64_t *_target, uint64_t _new)
 {

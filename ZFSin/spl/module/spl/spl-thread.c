@@ -76,10 +76,7 @@ spl_thread_create(
         if (result != STATUS_SUCCESS)
 			return (NULL);
 
-		/* Improve the priority when asked to do so */
-		/* Thread priorities range from 0 to 31, where 0 is the lowest
-		 * priority and 31 is the highest*/
-
+		/* moved after eThread resolved.
 		if (pri > minclsyspri) {
 			//thread_precedence_policy_data_t policy;
 			//policy.importance = pri - minclsyspri;
@@ -95,6 +92,7 @@ spl_thread_create(
 			// why is this call missing?
 			//KeSetBasePriorityThread(thread, 1);
 		}
+		*/
         //thread_deallocate(thread);
 
         atomic_inc_64(&zfs_threads);
@@ -103,6 +101,13 @@ spl_thread_create(
 		ObReferenceObjectByHandle(thread, 0, 0, KernelMode, &eThread, 0);
 		// Perhaps threadid should move to 64bit.
 		threadid = (int)(uintptr_t) PsGetThreadId(eThread);
+		/* Improve the priority when asked to do so */
+		/* Thread priorities range from 0 to 31, where 0 is the lowest
+		 * priority and 31 is the highest*/
+		// windows system process runs at 8 so all system threads start at 8.
+		if ((pri > defclsyspri) && (pri <= realtimeclsyspri)) {
+			KeSetBasePriorityThread(eThread, pri - 8);
+		}
 		ObDereferenceObject(eThread);
 		ZwClose(thread);
         return ((kthread_t *)threadid);

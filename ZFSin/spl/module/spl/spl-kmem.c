@@ -5167,7 +5167,7 @@ spl_kmem_init(uint64_t xtotal_memory)
 
 
 	/* LINTED */
-	ASSERT(sizeof (kmem_cpu_cache_t) == KMEM_CPU_CACHE_SIZE);
+	//ASSERT(sizeof (kmem_cpu_cache_t) == KMEM_CPU_CACHE_SIZE);
 
 	list_create(&kmem_caches, sizeof (kmem_cache_t),
 				offsetof(kmem_cache_t, cache_link));
@@ -5414,10 +5414,10 @@ spl_kmem_thread_init(void)
 	spl_free_thread_exit = FALSE;
 	// zfsin/212
 	(void) cv_init(&spl_free_thread_cv, NULL, CV_DEFAULT, NULL);
-	(void) thread_create(NULL, 0, spl_free_thread, 0, 0, 0, 0, 92);
+	(void) thread_create(NULL, 0, spl_free_thread, 0, 0, 0, 0, realtimeclsyspri); // was 92
 
 	spl_event_thread_exit = FALSE;
-	(void)thread_create(NULL, 0, spl_event_thread, 0, 0, 0, 0, 92);
+	(void)thread_create(NULL, 0, spl_event_thread, 0, 0, 0, 0, realtimeclsyspri); // was 92
 }
 
 void

@@ -51,7 +51,12 @@ typedef enum {
 } kmutex_type_t;
 
 typedef struct {
-	KEVENT opaque;
+    // union must be the first item in this structure!
+    union {
+        FAST_MUTEX opaque1; 
+        KSPIN_LOCK opaque2;
+        KEVENT opaque3;
+    };
 } mutex_t;
 
 /*
@@ -62,12 +67,19 @@ typedef struct {
  * aligned.
  */
 
-typedef struct kmutex {
-	mutex_t m_lock;
-	void           *m_owner;
+//typedef __declspec(align(64)) struct kmutex {
+ typedef struct DECLSPEC_CACHEALIGN kmutex {
+	mutex_t m_lock;    
+	void *m_owner;
 	unsigned int initialised;
-    unsigned int set_event_guard;
+    unsigned short set_event_guard;
+    unsigned char mutexused; // 1=fast-mutex, 2=spinlock 
+    union {
+        KIRQL m_irql;   // UCHAR in windows: for regular spinlocks
+        KLOCK_QUEUE_HANDLE m_qh; // For queued spinlocks
+    };
 } kmutex_t;
+
 
 
 #define MUTEX_HELD(x)           (mutex_owned(x))

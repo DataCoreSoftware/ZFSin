@@ -1010,9 +1010,11 @@ typedef struct l2arc_dev l2arc_dev_t;
 
 struct ht_lock {
 	kmutex_t	ht_lock;
+	/*
 #ifdef _KERNEL
 	unsigned char	pad[(HT_LOCK_PAD - sizeof (kmutex_t))];
 #endif
+*/
 };
 
 #define	BUF_LOCKS 256

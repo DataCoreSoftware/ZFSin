@@ -49,6 +49,10 @@ uint64_t zfs_active_mutex = 0;
 #define MUTEX_INITIALISED 0x23456789
 #define MUTEX_DESTROYED 0x98765432
 
+//#define USE_MUTEX_EVENT 1
+//#define USE_QUEUED_SPINLOCK 1
+
+
 int spl_mutex_subsystem_init(void)
 {
 	return 0;
@@ -62,18 +66,26 @@ void spl_mutex_subsystem_fini(void)
 void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc)
 {
 	(void)name;
-	ASSERT(type != MUTEX_SPIN);
 	ASSERT(ibc == NULL);
 
 	if (mp->initialised == MUTEX_INITIALISED)
 		panic("%s: mutex already initialised\n", __func__);
 	mp->initialised = MUTEX_INITIALISED;
 	mp->set_event_guard = 0;
-
 	mp->m_owner = NULL;
 
-	// Initialise it to 'Signaled' as mutex is 'free'.
-	KeInitializeEvent((PRKEVENT)&mp->m_lock, SynchronizationEvent, TRUE); 
+	if (type == MUTEX_SPIN) {
+		KeInitializeSpinLock((PKSPIN_LOCK)&mp->m_lock);
+		mp->mutexused = 2;
+	}
+	else {
+#ifndef USE_MUTEX_EVENT
+		ExInitializeFastMutex((PFAST_MUTEX)&mp->m_lock);
+#else
+		KeInitializeEvent((PRKEVENT)&mp->m_lock, SynchronizationEvent, FALSE);
+#endif
+		mp->mutexused = 1;
+	}
 	atomic_inc_64(&zfs_active_mutex);
 }
 
@@ -81,103 +93,135 @@ void spl_mutex_destroy(kmutex_t *mp)
 {
 	if (!mp) return;
 
-	if (mp->initialised != MUTEX_INITIALISED) 
-		panic("%s: mutex not initialised\n", __func__);
-
 	// Make sure any call to KeSetEvent() has completed.
 	while (mp->set_event_guard != 0) {
+//		DbgBreakPoint();   TODO- understand later why destroy could be called while the mutex is still used.
 		kpreempt(KPREEMPT_SYNC);
 	}
 
 	mp->initialised = MUTEX_DESTROYED;
-
-	if (mp->m_owner != 0) 
+	if (mp->m_owner != 0)
 		panic("SPL: releasing held mutex");
-
-	// There is no FREE member for events
-	// KeDeleteEvent();
-
 	atomic_dec_64(&zfs_active_mutex);
 }
 
 void spl_mutex_enter(kmutex_t *mp)
 {
-	NTSTATUS Status;
 	kthread_t *thisthread = current_thread();
 
+	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
 	if (mp->initialised != MUTEX_INITIALISED)
-		panic("%s: mutex not initialised\n", __func__);
-	
+		panic("%s: mutex not initialised\n", __func__);	
 	if (mp->m_owner == thisthread)
 		panic("mutex_enter: locking against myself!");
 
-	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
-
-	// Test if "m_owner" is NULL, if so, set it to "thisthread".
-	// Returns original value, so if NULL, it succeeded.
-again:
-	if (InterlockedCompareExchangePointer(&mp->m_owner, 
-		thisthread, NULL) != NULL) {
-
-		// Failed to CAS-in 'thisthread', as owner was not NULL
-		// Wait forever for event to be signaled.
-		Status = KeWaitForSingleObject(
-			(PRKEVENT)&mp->m_lock,
-			Executive,
-			KernelMode,
-			FALSE,
-			NULL
-		);
-
-		// We waited, but someone else may have beaten us to it
-		// so we need to attempt CAS again
-		goto again;
+	if (mp->mutexused == 2) {
+#ifndef USE_QUEUED_SPINLOCK
+		KeAcquireSpinLock((PKSPIN_LOCK)&mp->m_lock,&mp->m_irql);
+#else
+		KeAcquireInStackQueuedSpinLock((PKSPIN_LOCK)&mp->m_lock,&mp->m_qh);
+#endif
+		mp->m_owner = thisthread;
 	}
+	else {
+#ifndef USE_MUTEX_EVENT
+		VERIFY3U(KeGetCurrentIrql(), <= , APC_LEVEL);
+		KeEnterCriticalRegion();
+		ExAcquireFastMutexUnsafe((PFAST_MUTEX)&mp->m_lock);
+		mp->m_owner = thisthread;
+		KeLeaveCriticalRegion();
+#else
+	again:
+		if (InterlockedCompareExchangePointer(&mp->m_owner,
+			thisthread, NULL) != NULL) {
 
-	ASSERT(mp->m_owner == thisthread);
+			// Failed to CAS-in 'thisthread', as owner was not NULL
+			// Wait forever for event to be signaled.
+			KeWaitForSingleObject(
+				(PRKEVENT)&mp->m_lock,
+				Executive,
+				KernelMode,
+				FALSE,
+				NULL
+			);
+
+			// We waited, but someone else may have beaten us to it
+			// so we need to attempt CAS again
+			goto again;
+		}
+#endif
+
+	}
+    
+	if (mp->initialised != MUTEX_INITIALISED) {
+		panic("%s: race condition with mutex_destroy!\n", __func__);
+	}
 }
 
-void spl_mutex_exit(kmutex_t *mp)
+void spl_mutex_exit(kmutex_t* mp)
 {
+	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
 	if (mp->m_owner != current_thread())
 		panic("%s: releasing not held/not our lock?\n", __func__);
 
-	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
 
-	atomic_inc_32(&mp->set_event_guard);
+	if (mp->mutexused == 2) {
+		mp->m_owner = NULL;
+#ifndef USE_QUEUED_SPINLOCK
+		KeReleaseSpinLock((PKSPIN_LOCK)&mp->m_lock, mp->m_irql);
+#else
+		KeReleaseInStackQueuedSpinLock(&mp->m_qh);
+#endif
 
-	mp->m_owner = NULL;
-
-	VERIFY3U(KeGetCurrentIrql(), <= , DISPATCH_LEVEL);
-
-	// Wake up one waiter now that it is available.
-	KeSetEvent((PRKEVENT)&mp->m_lock, SEMAPHORE_INCREMENT, FALSE);
-	atomic_dec_32(&mp->set_event_guard);
+	}
+	else {
+		atomic_inc_16(&mp->set_event_guard);
+#ifndef USE_MUTEX_EVENT
+		VERIFY3U(KeGetCurrentIrql(), <= , APC_LEVEL);
+		// prevent tryenter to steal it before a true waiter is woken up (if any)		
+		KeEnterCriticalRegion();
+		mp->m_owner = NULL;
+		ExReleaseFastMutexUnsafe((PFAST_MUTEX)&mp->m_lock);
+		KeLeaveCriticalRegion();		
+#else
+		// Wake up one waiter now that it is available.
+		InterlockedExchangePointer(&mp->m_owner, NULL); // give control back to someone else
+		KeSetEvent((PRKEVENT)&mp->m_lock, EVENT_INCREMENT, FALSE);
+#endif
+		atomic_dec_16(&mp->set_event_guard);
+	}
 }
 
 int spl_mutex_tryenter(kmutex_t *mp)
 {
-	LARGE_INTEGER timeout;
-	NTSTATUS Status;
 	kthread_t *thisthread = current_thread();
 
 	if (mp->initialised != MUTEX_INITIALISED)
 		panic("%s: mutex not initialised\n", __func__);
-
 	if (mp->m_owner == thisthread)
 		panic("mutex_tryenter: locking against myself!");
-
-	// Test if "m_owner" is NULL, if so, set it to "thisthread".
-	// Returns original value, so if NULL, it succeeded.
-	if (InterlockedCompareExchangePointer(&mp->m_owner,
-		thisthread, NULL) != NULL) {
-		return 0; // Not held.
+	
+	if (mp->mutexused == 2)
+		panic("mutex_tryenter: no tryenter on a spinlock!");
+	
+#ifndef USE_MUTEX_EVENT	
+	KIRQL cIrql = KeGetCurrentIrql();
+	if (ExTryToAcquireFastMutex((PFAST_MUTEX)&mp->m_lock)) {
+		// Got it.
+		mp->m_owner = thisthread;
+		// Lower the IRQL to be < APC so special kernel APCs are delivered while holding it. it's safe in ZFS to do so.
+		if (cIrql < APC_LEVEL)
+			KeLowerIrql(cIrql);
+		return (1); // held
 	}
-
-	ASSERT(mp->m_owner == thisthread);
-
-	// held
-	return (1);
+	else 
+		return(0); // not held			
+#else
+	if (InterlockedCompareExchangePointer(&mp->m_owner, thisthread, NULL) != NULL)
+		return 0; // Not held.
+	else
+		return (1); // held
+#endif
 }
 
 int spl_mutex_owned(kmutex_t *mp)
@@ -187,5 +231,5 @@ int spl_mutex_owned(kmutex_t *mp)
 
 struct kthread *spl_mutex_owner(kmutex_t *mp)
 {
-	return (mp->m_owner);
+	return ((struct kthread *)mp->m_owner);
 }
