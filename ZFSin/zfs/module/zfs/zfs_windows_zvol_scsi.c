@@ -59,8 +59,6 @@
 
 #include <sys/zvol.h>
 
-#define USE_TASKQ_ZVOL 1
-
 // Verbose SCSI output
 //#undef dprintf
 //#define dprintf
@@ -715,7 +713,7 @@ ScsiReadWriteSetup(
 	InsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt,&pSrbExt->QueuedForProcessing);
 	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
 
-#ifndef USE_TASKQ_ZVOL
+#ifdef USE_WORKITEMS_FE
 	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, spzvol_WorkItemRtn, NormalWorkQueue, pWkRtnParms);
 #else
@@ -974,7 +972,7 @@ DiReadWriteSetup(
 	pWkRtnParms->zv = zv;
 	pWkRtnParms->Action = action;
 
-#ifndef USE_TASKQ_ZVOL
+#ifdef USE_WORKITEMS_FE
 	extern PDEVICE_OBJECT ioctlDeviceObject;
 	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
 	IoInitializeWorkItem(ioctlDeviceObject, pWI);

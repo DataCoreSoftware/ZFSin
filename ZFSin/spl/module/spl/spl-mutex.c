@@ -49,9 +49,6 @@ uint64_t zfs_active_mutex = 0;
 #define MUTEX_INITIALISED 0x23456789
 #define MUTEX_DESTROYED 0x98765432
 
-//#define USE_MUTEX_EVENT 1
-//#define USE_QUEUED_SPINLOCK 1
-
 
 int spl_mutex_subsystem_init(void)
 {
@@ -79,10 +76,10 @@ void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc)
 		mp->mutexused = 2;
 	}
 	else {
-#ifndef USE_MUTEX_EVENT
-		ExInitializeFastMutex((PFAST_MUTEX)&mp->m_lock);
-#else
+#ifdef USE_MUTEX_EVENT
 		KeInitializeEvent((PRKEVENT)&mp->m_lock, SynchronizationEvent, FALSE);
+#else
+		ExInitializeFastMutex((PFAST_MUTEX)&mp->m_lock);
 #endif
 		mp->mutexused = 1;
 	}
@@ -124,13 +121,7 @@ void spl_mutex_enter(kmutex_t *mp)
 		mp->m_owner = thisthread;
 	}
 	else {
-#ifndef USE_MUTEX_EVENT
-		VERIFY3U(KeGetCurrentIrql(), <= , APC_LEVEL);
-		KeEnterCriticalRegion();
-		ExAcquireFastMutexUnsafe((PFAST_MUTEX)&mp->m_lock);
-		mp->m_owner = thisthread;
-		KeLeaveCriticalRegion();
-#else
+#ifdef USE_MUTEX_EVENT
 	again:
 		if (InterlockedCompareExchangePointer(&mp->m_owner,
 			thisthread, NULL) != NULL) {
@@ -149,8 +140,13 @@ void spl_mutex_enter(kmutex_t *mp)
 			// so we need to attempt CAS again
 			goto again;
 		}
+#else
+		VERIFY3U(KeGetCurrentIrql(), <= , APC_LEVEL);
+		KeEnterCriticalRegion();
+		ExAcquireFastMutexUnsafe((PFAST_MUTEX)&mp->m_lock);
+		mp->m_owner = thisthread;
+		KeLeaveCriticalRegion();
 #endif
-
 	}
     
 	if (mp->initialised != MUTEX_INITIALISED) {
@@ -176,17 +172,17 @@ void spl_mutex_exit(kmutex_t* mp)
 	}
 	else {
 		atomic_inc_16(&mp->set_event_guard);
-#ifndef USE_MUTEX_EVENT
+#ifdef USE_MUTEX_EVENT
+		// Wake up one waiter now that it is available.
+		InterlockedExchangePointer(&mp->m_owner, NULL); // give control back to someone else
+		KeSetEvent((PRKEVENT)&mp->m_lock, EVENT_INCREMENT, FALSE);
+#else
 		VERIFY3U(KeGetCurrentIrql(), <= , APC_LEVEL);
 		// prevent tryenter to steal it before a true waiter is woken up (if any)		
 		KeEnterCriticalRegion();
 		mp->m_owner = NULL;
 		ExReleaseFastMutexUnsafe((PFAST_MUTEX)&mp->m_lock);
 		KeLeaveCriticalRegion();		
-#else
-		// Wake up one waiter now that it is available.
-		InterlockedExchangePointer(&mp->m_owner, NULL); // give control back to someone else
-		KeSetEvent((PRKEVENT)&mp->m_lock, EVENT_INCREMENT, FALSE);
 #endif
 		atomic_dec_16(&mp->set_event_guard);
 	}
@@ -204,7 +200,12 @@ int spl_mutex_tryenter(kmutex_t *mp)
 	if (mp->mutexused == 2)
 		panic("mutex_tryenter: no tryenter on a spinlock!");
 	
-#ifndef USE_MUTEX_EVENT	
+#ifdef USE_MUTEX_EVENT	
+	if (InterlockedCompareExchangePointer(&mp->m_owner, thisthread, NULL) != NULL)
+		return 0; // Not held.
+	else
+		return (1); // held
+#else
 	KIRQL cIrql = KeGetCurrentIrql();
 	if (ExTryToAcquireFastMutex((PFAST_MUTEX)&mp->m_lock)) {
 		// Got it.
@@ -216,11 +217,6 @@ int spl_mutex_tryenter(kmutex_t *mp)
 	}
 	else 
 		return(0); // not held			
-#else
-	if (InterlockedCompareExchangePointer(&mp->m_owner, thisthread, NULL) != NULL)
-		return 0; // Not held.
-	else
-		return (1); // held
 #endif
 }
 
