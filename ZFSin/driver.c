@@ -53,6 +53,9 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRegistryPath)
 {
 	NTSTATUS status;
+
+	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
+
 	ZFSWppInit(DriverObject, pRegistryPath);
 	
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin: DriverEntry\n"));
