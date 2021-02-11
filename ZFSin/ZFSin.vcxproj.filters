@@ -1297,10 +1297,7 @@
     </ClInclude>
     <ClInclude Include="zfs\include\sys\zvolIO.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="zfs\include\sys\zfs_file.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+    </ClInclude>    
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
