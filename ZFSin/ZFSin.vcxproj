@@ -161,7 +161,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC;POOL_NX_OPTIN=1</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
@@ -184,7 +184,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)\$(Platform)\$(ConfigurationName)\;$(SolutionDir)\ZFSin;$(SolutionDir)\ZFSin\$(Platform)\$(ConfigurationName);$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC;POOL_NX_OPTIN=1</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
