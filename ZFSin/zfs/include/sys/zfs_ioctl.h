@@ -39,6 +39,7 @@
 
 #ifdef _KERNEL
 #include <sys/nvpair.h>
+#include <sys/fs/zfsdi.h>
 #else
 #include <winioctl.h>
 #endif	/* _KERNEL */
@@ -55,6 +56,8 @@ extern "C" {
  * explicit padding so that the 32-bit structure will not be packed more
  * tightly than the 64-bit structure (which requires 64-bit alignment).
  */
+
+
 
 /*
  * Property values for snapdir
@@ -651,6 +654,26 @@ typedef struct zfs_useracct {
 	uint64_t zu_space;
 } zfs_useracct_t;
 
+#define ZPOOL_GET_SIZE_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFF, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+// Input/Output for IOCTL - ZPOOL_GET_SIZE_STATS
+typedef struct {
+	char zpool_name[MAXNAMELEN];
+	uint64_t size;
+	uint64_t alloc;
+} zpool_size_stats;
+
+
+typedef struct {
+	unsigned __int64 read_iops;
+	unsigned __int64 write_iops;
+	unsigned __int64 total_iops;
+	unsigned __int64 read_mbytes;
+	unsigned __int64 write_mbytes;
+	unsigned __int64 total_mbytes;
+} zpool_perf_counters;
+
+
 #define	ZFSDEV_MAX_MINOR	(1 << 16)
 #define	ZFS_MIN_MINOR	(ZFSDEV_MAX_MINOR + 1)
 
@@ -703,6 +726,15 @@ extern uint64_t zfs_ioc_unregister_fs(void);
 extern int zfs_vnop_force_formd_normalized_output;
 
 DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
+
+NTSTATUS NTAPI
+ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context);
+
+void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData);
+
+PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName);
+
+void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 
 #endif	/* _KERNEL */
 
