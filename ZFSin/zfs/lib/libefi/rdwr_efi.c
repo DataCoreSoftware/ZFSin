@@ -381,7 +381,7 @@ efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
 	size_t		length;
 	struct dk_gpt	*vptr;
 	struct uuid	uuid;
-	struct dk_cinfo	dki_info;
+	struct dk_cinfo	dki_info = { 0 };
 
 	if (read_disk_info(fd, &capacity, &lbsize) != 0)
 		return (-1);
@@ -392,11 +392,12 @@ efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
 
 	if (dki_info.dki_partition != 0)
 		return (-1);
-
+#ifndef _WIN32
 	if ((dki_info.dki_ctype == DKC_PCMCIA_MEM) ||
 	    (dki_info.dki_ctype == DKC_VBD) ||
 	    (dki_info.dki_ctype == DKC_UNKNOWN))
 		return (-1);
+#endif
 #endif
 
 	nblocks = NBLOCKS(nparts, lbsize);
