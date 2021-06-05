@@ -658,6 +658,8 @@ typedef struct zfs_useracct {
 
 // Input/Output for IOCTL - ZPOOL_GET_SIZE_STATS
 typedef struct {
+	uint8_t targetid;
+	uint8_t lun;
 	char zpool_name[MAXNAMELEN];
 	uint64_t size;
 	uint64_t alloc;
