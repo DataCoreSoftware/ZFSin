@@ -187,12 +187,15 @@ class ResultCreation():
 
         '''
         status_slog = 'OFF'
+        status_l2arc = 'OFF'
         status_encrp = 'OFF'
         configur = ConfigParser()
         configur.read(r"../../../Config/VdBench_config/VDBench_config.ini")
-        print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'enryption_flag'))
+        print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'l2arc_flag'), configur.get('first run', 'enryption_flag'))
         if configur.get('first run', 'slog_flag').strip() == 'True':
             status_slog = 'ON'
+        if configur.get('first run', 'l2arc_flag').strip() == 'True':
+            status_l2arc = 'ON'
         if configur.get('first run', 'enryption_flag').strip() == 'True':
             status_encrp = 'ON'
         uri = "servers"
