@@ -170,6 +170,10 @@ class Run():
                                type=str,
                                help='Specify the SLOG enable/disable '\
                                    'Valid Values are : on,off')
+        my_parser.add_argument('-l2arcselect', '-l',
+                               type=str,
+                               help='Specify the L2ARC enable/disable '\
+                                   'Valid Values are : on,off')
         my_parser.add_argument('-encryption', '-e',
                                type=str,
                                help='Specify the encryption enable/disable. '\
@@ -191,6 +195,10 @@ class Run():
             self.set_config_val('first run', 'slog_flag', 'True')
         else:
             self.set_config_val('first run', 'slog_flag', 'False')
+        if args.l2arcselect == 'on':
+            self.set_config_val('first run', 'l2arc_flag', 'True')
+        else:
+            self.set_config_val('first run', 'l2arc_flag', 'False')
         if (args.workload is not None) and (args.disktype is not None):
             self.config_creation(args)
             flag = Test_ILDC().start()
@@ -228,6 +236,7 @@ class Run():
         self.set_config_val('first run', 'run', 'False')
         self.set_config_val('first run', 'start', 'None')
         self.set_config_val('first run', 'slog_flag', 'False')
+        self.set_config_val('first run', 'l2arc_flag', 'False')        
         self.set_config_val('first run', 'enryption_flag', 'False')
         self.set_config_val('first run', 'modify_flag', 'False')
         self.set_config_val('zfs value', 'primarycache', 'default')

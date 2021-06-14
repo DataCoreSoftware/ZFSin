@@ -46,6 +46,7 @@ class Test_ILDC:
         self.test_status = ''
         self.vd_id = ''
         self.slog = []
+        self.l2arc = []
         self.server_name = ''
         self.zfs_zvol = []
     def start(self):
@@ -90,9 +91,11 @@ class Test_ILDC:
         self.config_dict['co disk'] = configur.get('Server level co', 's_disk').split(',')
         self.config_dict['diskpool_disk'] = configur.get('disk pool disk', 'd_disk').split(',')
         self.config_dict['slog_disk'] = configur.get('slog', 's_log_disk').split(',')
-        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk'] + self.config_dict['slog_disk']
+        self.config_dict['l2arc_disk'] = configur.get('l2arc', 'l2arc_disk').split(',')        
+        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk'] + self.config_dict['slog_disk'] + self.config_dict['l2arc_disk']
         self.config_dict['encryption_flag'] = configur.get('first run', 'enryption_flag')
         self.config_dict['slog_flag'] = configur.get('first run', 'slog_flag')
+        self.config_dict['l2arc_flag'] = configur.get('first run', 'l2arc_flag')
         self.config_dict['modify_flag'] = configur.get('first run', 'Modify_flag')
         if configur.get('first run', 'modify_flag').strip() == 'True':
             self.config_dict['primaycach'] = configur.get('zfs value', 'primarycache')
@@ -200,8 +203,8 @@ class Test_ILDC:
         process.stdin.close()
     def run(self):
         '''
-        This method validate disk is used by othere process.
-        If its used by othere process it will raise error and
+        This method validates if disk is used by other process.
+        If it is used by other process it will raise error and
         stop execution of tool.
         Arguments : None
         Return (int): flag
@@ -222,6 +225,8 @@ class Test_ILDC:
                     self.co_disk.append(pd_ids[int(_)])
                 elif _ in self.config_dict['diskpool_disk']:
                     self.disk_pool_disk.append(pd_ids[int(_)])
+                elif _ in self.config_dict['l2arc_disk']:
+                    self.l2arc.append(pd_ids[int(_)])
                 else:
                     self.slog.append(pd_ids[int(_)])
                 self.release_disk(pd_ids[int(_)])
@@ -429,7 +434,58 @@ class Test_ILDC:
         process.stdin.write(cmd_ + "\n")
         process.stdin.close()
         output = process.stdout.read().split('\n')
-        LogCreat().logger_info.info('SLOG is Enabled')
+        LogCreat().logger_info.info('SLOG is Enabled')        
+
+    def set_l2arc(self):
+        '''
+        This method sets L2ARC 
+
+        Returns
+        -------
+        None.
+
+        '''
+        process = subprocess.Popen('cmd.exe', stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE, shell=False)
+        process.stdin.write('cd /d c:\\' + "\n")
+        process.stdin.write("cd \"C:/Program Files/DataCore/SANsymphony/zfs\"" + "\n")
+        process.stdin.write("zfs list" + "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        
+        out = output[9].split()[0]
+        drive = ''
+        for id_ in self.config_dict['l2arc_disk']:
+            drive = drive + ' ' +'PHYSICALDRIVE' + str(id_) + ' '
+        cmd_ = 'zpool add ' + out + ' cache ' + drive.strip()
+        self.call_l2arc(cmd_)
+        
+    def call_l2arc(self, cmd_):
+        '''
+        This method creates command for L2ARC setting
+
+        Parameters
+        ----------
+        cmd_ : str
+
+        Returns
+        -------
+        None.
+
+        '''
+        process = subprocess.Popen('cmd.exe', stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE, shell=False)
+        process.stdin.write('cd /d c:\\' + "\n")
+        process.stdin.write("cd \"C:/Program Files/DataCore/SANsymphony/zfs\"" + "\n")
+        process.stdin.write(cmd_ + "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        LogCreat().logger_info.info('L2ARC is Enabled')
+        
     def input_for_test(self):
         '''
         This method pass disk and workload details to the tool.
@@ -484,6 +540,9 @@ class Test_ILDC:
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
                     self.set_slog()
+                if self.config_dict['l2arc_flag'] == 'True':
+                    time.sleep(10)
+                    self.set_l2arc()                    
             if flag == 0:
                 time.sleep(15)
                 self.create_diskpool(vd_name)
