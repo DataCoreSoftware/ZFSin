@@ -649,10 +649,11 @@ class Test_ILDC:
         print(msg)
         LogCreat().logger_info.info(msg)
         
-        time.sleep(15)
-        while (self.reclamation() == False):
+        time.sleep(30)
+        disk_id = self.get_disks_id()
+        while (self.reclamation(disk_id) == False):
             print(".", sep='', end='', flush=True)
-            time.sleep(15)
+            time.sleep(30)
         print("\n")
         msg="Reclamation completed"
         print(msg)
@@ -675,12 +676,14 @@ class Test_ILDC:
             LogCreat().logger_info.info(msg)
         else:
             self.verification(res.json(), msg)
-    def reclamation(self):
+    def reclamation(self,zvol_id):
         '''
         This method verify reclamation of diskpool.
-        Arguments : None
+        Arguments : disk_id []
         Return (int): self.flag
-        '''
+
+        The below code is commented as it checks for the reclamation of only physical disks in the dcspool and not the zvols.
+
         uri = "performancebytype/DiskPoolPerformance"
         res = ILDC().do_ssy_details(uri, header=None)
         if res.json() != []:
@@ -689,6 +692,55 @@ class Test_ILDC:
                     if key == 'PerformanceData' and val["BytesInReclamation"] == 0:
                         return True
         return False
+        '''
+        password = self.extract_password()
+        cmd = "powershell.exe -File \'C:/Program Files/DataCore/Powershell Support\Register-DcsCmdlets.ps1\'" + "\n"
+        expert_mode_cmd = 'Enable-DcsExpertMode -SecurityCode ' + password
+        process = subprocess.Popen(['powershell', cmd], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE)
+        process.stdin.write("connect-dcsserver" + "\n")
+        process.stdin.write(expert_mode_cmd + "\n")
+        for i in range(0,len(zvol_id)) :
+            process.stdin.write("Get-DcsPerformanceCounter "+zvol_id[i]+ "\n")
+        process.stdin.close()
+        output = process.stdout.read()
+        arr = output.split("\n")
+        for line in arr :
+            if 'BytesInReclamation' in line :
+                l = line.split(':')
+                if l[1].strip(' ') != "0" :
+                    return False
+        return True
+    def get_disks_id(self):
+        '''
+        This method find the disk present present in dcspool
+        Arguments : None
+        Retuns (string[]) : Array of disk Id
+        '''
+        disk_id = []
+        msg = "No of disks undergoing reclamation "
+        password = self.extract_password()
+        cmd = "powershell.exe -File \'C:/Program Files/DataCore/Powershell Support\Register-DcsCmdlets.ps1\'" + "\n"
+        expert_mode_cmd = 'Enable-DcsExpertMode -SecurityCode ' + password
+        process = subprocess.Popen(['powershell', cmd], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE)
+        process.stdin.write("connect-dcsserver" + "\n")
+        process.stdin.write(expert_mode_cmd + "\n")
+        process.stdin.write("Get-DcsPoolMember"+ "\n")
+        process.stdin.close()
+        output = process.stdout.read()
+        arr = output.split("\n")
+        for line in arr :
+            if ':' in line :
+                l = line.split(':')
+                if l[0].strip(' ') == 'Id' :
+                    disk_id.append(l[1].strip(' '))
+        LogCreat().logger_info.info(msg+str(len(disk_id)))
+        return disk_id
     def get_server(self):
         '''
         This method used to get server details.
