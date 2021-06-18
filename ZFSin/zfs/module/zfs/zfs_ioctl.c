@@ -537,6 +537,127 @@ void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
+void
+latency_stats(uint64_t *histo, unsigned int buckets, stat_pair *lat)
+{
+	int i;
+	lat->count = 0;
+	lat->total = 0;
+
+	for (i = 0; i < buckets; i++) {
+		/*
+		 * Our buckets are power-of-two latency ranges.  Use the
+		 * midpoint latency of each bucket to calculate the average.
+		 * For example:
+		 *
+		 * Bucket          Midpoint
+		 * 8ns-15ns:       12ns
+		 * 16ns-31ns:      24ns
+		 * ...
+		 */
+		if (histo[i] != 0) {
+			lat->total += histo[i] * (((1UL << i) + ((1UL << i) / 2)));
+			lat->count += histo[i];
+		}
+	}
+}
+
+void
+update_perf(vdev_stat_ex_t *vsx, vdev_stat_t *vs, ddt_object_t *ddo, dsl_pool_t* spad, zpool_perf_counters* perf) {
+
+	perf->ddt_entry_count = ddo->ddo_count;
+	perf->ddt_dspace = ddo->ddo_dspace * ddo->ddo_count;
+	perf->ddt_mspace = ddo->ddo_mspace * ddo->ddo_count;
+
+	perf->read_iops = vs->vs_ops[ZIO_TYPE_READ];
+	perf->write_iops = vs->vs_ops[ZIO_TYPE_WRITE];
+	perf->read_bytes = vs->vs_bytes[ZIO_TYPE_READ];
+	perf->write_bytes = vs->vs_bytes[ZIO_TYPE_WRITE];
+	perf->total_bytes = vs->vs_bytes[ZIO_TYPE_WRITE] + vs->vs_bytes[ZIO_TYPE_READ];
+	perf->total_iops = vs->vs_ops[ZIO_TYPE_WRITE] + vs->vs_ops[ZIO_TYPE_READ];
+
+	perf->vsx_active_queue_sync_read = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_READ];
+	perf->vsx_active_queue_sync_write = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_WRITE];
+	perf->vsx_active_queue_async_read = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_READ];
+	perf->vsx_active_queue_async_write = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_WRITE];
+	perf->vsx_pend_queue_sync_read = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_READ];
+	perf->vsx_pend_queue_sync_write = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_WRITE];
+	perf->vsx_pend_queue_async_read = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_READ];
+	perf->vsx_pend_queue_async_write = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_WRITE];
+
+	stat_pair lat;
+	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_queue_histo_sync_read_time = lat.total;
+	perf->vsx_queue_histo_sync_read_count = lat.count;
+
+	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_queue_histo_sync_write_time = lat.total;
+	perf->vsx_queue_histo_sync_write_count = lat.count;
+
+	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_queue_histo_async_read_time = lat.total;
+	perf->vsx_queue_histo_async_read_count = lat.count;
+
+	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_queue_histo_async_write_time = lat.total;
+	perf->vsx_queue_histo_async_write_count = lat.count;
+
+	latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_total_histo_read_time = lat.total;
+	perf->vsx_total_histo_read_count = lat.count;
+
+	latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_total_histo_write_time = lat.total;
+	perf->vsx_total_histo_write_count = lat.count;
+
+	latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_disk_histo_read_time = lat.total;
+	perf->vsx_disk_histo_read_count = lat.count;
+
+	latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+	perf->vsx_disk_histo_write_time = lat.total;
+	perf->vsx_disk_histo_write_count = lat.count;
+
+	perf->dp_dirty_total_io = spad->dp_dirty_total;
+}
+
+void
+update_total_perf(zpool_perf_counters* perf, zpool_perf_counters* total_perf) {
+	total_perf->ddt_entry_count += perf->ddt_entry_count;
+	total_perf->ddt_dspace += perf->ddt_dspace;
+	total_perf->ddt_mspace += perf->ddt_mspace;
+	total_perf->read_iops += perf->read_iops;
+	total_perf->write_iops += perf->write_iops;
+	total_perf->read_bytes += perf->read_bytes;
+	total_perf->write_bytes += perf->write_bytes;
+	total_perf->total_iops += (perf->read_iops + perf->write_iops);
+	total_perf->total_bytes += (perf->read_bytes + perf->write_bytes);
+	total_perf->vsx_active_queue_sync_read += perf->vsx_active_queue_sync_read;
+	total_perf->vsx_active_queue_sync_write += perf->vsx_active_queue_sync_write;
+	total_perf->vsx_active_queue_async_read += perf->vsx_active_queue_async_read;
+	total_perf->vsx_active_queue_async_write += perf->vsx_active_queue_async_write;
+	total_perf->vsx_pend_queue_sync_read += perf->vsx_pend_queue_sync_read;
+	total_perf->vsx_pend_queue_sync_write += perf->vsx_pend_queue_sync_write;
+	total_perf->vsx_pend_queue_async_read += perf->vsx_pend_queue_async_read;
+	total_perf->vsx_pend_queue_async_write += perf->vsx_pend_queue_async_write;
+	total_perf->vsx_disk_histo_read_time += perf->vsx_disk_histo_read_time;
+	total_perf->vsx_disk_histo_read_count += perf->vsx_disk_histo_read_count;
+	total_perf->vsx_disk_histo_write_time += perf->vsx_disk_histo_write_time;
+	total_perf->vsx_disk_histo_write_count += perf->vsx_disk_histo_write_count;
+	total_perf->vsx_total_histo_read_time += perf->vsx_total_histo_read_time;
+	total_perf->vsx_total_histo_read_count += perf->vsx_total_histo_read_count;
+	total_perf->vsx_total_histo_write_time += perf->vsx_total_histo_write_time;
+	total_perf->vsx_total_histo_write_count += perf->vsx_total_histo_write_count;
+	total_perf->vsx_queue_histo_sync_read_time += perf->vsx_queue_histo_sync_read_time;
+	total_perf->vsx_queue_histo_sync_read_count += perf->vsx_queue_histo_sync_read_count;
+	total_perf->vsx_queue_histo_sync_write_time += perf->vsx_queue_histo_sync_write_time;
+	total_perf->vsx_queue_histo_sync_write_count += perf->vsx_queue_histo_sync_write_count;
+	total_perf->vsx_queue_histo_async_read_time += perf->vsx_queue_histo_async_read_time;
+	total_perf->vsx_queue_histo_async_read_count += perf->vsx_queue_histo_async_read_count;
+	total_perf->vsx_queue_histo_async_write_time += perf->vsx_queue_histo_async_write_time;
+	total_perf->vsx_queue_histo_async_write_count += perf->vsx_queue_histo_async_write_count;
+	total_perf->dp_dirty_total_io += perf->dp_dirty_total_io;
+}
 
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	NTSTATUS status = STATUS_SUCCESS;
@@ -547,20 +668,27 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	ANSI_STRING ansi_spa;
 	spa_t* spa_perf = NULL;
 	zpool_perf_counters total_perf = { 0 };
-	vdev_stat_ex_t vsx;
 
 	mutex_enter(&spa_namespace_lock);
+
 	while ((spa_perf = spa_next(spa_perf)) != NULL) {
+		zpool_perf_counters perf = { 0 };
 		spa_open_ref(spa_perf, FTAG);
 		RtlInitAnsiString(&ansi_spa, spa_perf->spa_name);
-
 		ddt_object_t ddo = { 0 };
-		vdev_stat_t vs;
+		vdev_stat_t vs = { 0 };
+		vdev_stat_ex_t vsx = { 0 };
+
 		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
 		vdev_get_stats_ex(spa_perf->spa_root_vdev, &vs, &vsx);
 		ddt_get_dedup_object_stats(spa_perf, &ddo);
+		dsl_pool_t* spad = spa_get_dsl(spa_perf);
+
+		update_perf(&vsx, &vs, &ddo, spad, &perf);
 		spa_config_exit(spa_perf, SCL_ALL, FTAG);
 		spa_close(spa_perf, FTAG);
+
+		update_total_perf(&perf, &total_perf);
 
 		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
 		if (!NT_SUCCESS(status)) {
@@ -568,44 +696,6 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 				__func__, __LINE__, &ansi_spa);
 			continue;
 		}
-
-		zpool_perf_counters perf = { 0 };
-
-		perf.ddt_entry_count = ddo.ddo_count;
-		perf.ddt_dspace = ddo.ddo_dspace * ddo.ddo_count;
-		perf.ddt_mspace = ddo.ddo_mspace * ddo.ddo_count;
-		perf.read_iops = vs.vs_ops[ZIO_TYPE_READ];
-		perf.write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
-		perf.read_bytes = vs.vs_bytes[ZIO_TYPE_READ];
-		perf.write_bytes = vs.vs_bytes[ZIO_TYPE_WRITE];
-		perf.total_bytes = vs.vs_bytes[ZIO_TYPE_WRITE] + vs.vs_bytes[ZIO_TYPE_READ];
-		perf.total_iops = vs.vs_ops[ZIO_TYPE_WRITE] + vs.vs_ops[ZIO_TYPE_READ];
-		perf.vsx_active_queue_sync_read=vsx.vsx_active_queue[ZIO_PRIORITY_SYNC_READ];
-		perf.vsx_active_queue_sync_write= vsx.vsx_active_queue[ZIO_PRIORITY_SYNC_WRITE];
-		perf.vsx_active_queue_async_read=vsx.vsx_active_queue[ZIO_PRIORITY_ASYNC_READ];
-		perf.vsx_active_queue_async_write=vsx.vsx_active_queue[ZIO_PRIORITY_ASYNC_WRITE];
-		perf.vsx_pend_queue_sync_read =vsx.vsx_pend_queue[ZIO_PRIORITY_SYNC_READ];
-		perf.vsx_pend_queue_sync_write=vsx.vsx_pend_queue[ZIO_PRIORITY_SYNC_WRITE];
-		perf.vsx_pend_queue_async_read= vsx.vsx_pend_queue[ZIO_PRIORITY_ASYNC_READ];
-		perf.vsx_pend_queue_async_write =vsx.vsx_pend_queue[ZIO_PRIORITY_ASYNC_WRITE];
-
-		total_perf.ddt_entry_count += perf.ddt_entry_count;
-		total_perf.ddt_dspace += perf.ddt_dspace;
-		total_perf.ddt_mspace += perf.ddt_mspace;
-		total_perf.read_iops += perf.read_iops;
-		total_perf.write_iops += perf.write_iops;
-		total_perf.read_bytes += perf.read_bytes;
-		total_perf.write_bytes += perf.write_bytes;
-		total_perf.total_iops += (perf.read_iops + perf.write_iops);
-		total_perf.total_bytes += (perf.read_bytes + perf.write_bytes);
-		total_perf.vsx_active_queue_sync_read += perf.vsx_active_queue_sync_read;
-		total_perf.vsx_active_queue_sync_write += perf.vsx_active_queue_sync_write;
-		total_perf.vsx_active_queue_async_read += perf.vsx_active_queue_async_read;
-		total_perf.vsx_active_queue_async_write += perf.vsx_active_queue_async_write;
-		total_perf.vsx_pend_queue_sync_read += perf.vsx_pend_queue_sync_read;
-		total_perf.vsx_pend_queue_sync_write += perf.vsx_pend_queue_sync_write;
-		total_perf.vsx_pend_queue_async_read += perf.vsx_pend_queue_async_read;
-		total_perf.vsx_pend_queue_async_write += perf.vsx_pend_queue_async_write;
 
 		status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf);
 
