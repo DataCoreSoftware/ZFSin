@@ -19,6 +19,8 @@ from os import path
 import subprocess
 from configparser import ConfigParser
 from pywinauto.application import Application
+import warnings
+warnings.simplefilter('ignore', category=UserWarning)
 sys.path.insert(0, os.path.abspath("../../../Interface/REST"))
 from ILDC import ILDC
 from Disks import Disks
@@ -535,8 +537,8 @@ class Test_ILDC:
             LogCreat().logger_info.info('************************'\
                                         'Test Started************************')
             time.sleep(30)
+            flag = self.test_enable_cap_opt_at_server()
             if vd_name.lower() != "standard":
-                flag = self.test_enable_cap_opt_at_server()
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
                     self.set_slog()
@@ -580,9 +582,8 @@ class Test_ILDC:
                     time.sleep(25)
                 self.delete_pool()
                 time.sleep(120)
-            if vd_name.lower() != "standard":
-                self.test_disable_cap_opt_at_server()
-                time.sleep(180)
+            self.test_disable_cap_opt_at_server()
+            time.sleep(180)
             print('************************'\
                   'VdBench Execution Completed************************\n')
             LogCreat().logger_info.info('************************'\
