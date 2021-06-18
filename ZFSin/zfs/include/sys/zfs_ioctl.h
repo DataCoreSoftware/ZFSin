@@ -665,6 +665,13 @@ typedef struct {
 	uint64_t alloc;
 } zpool_size_stats;
 
+typedef struct
+{
+	uint64_t total;
+	uint64_t count;
+}stat_pair;
+
+
 
 #define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
@@ -686,6 +693,23 @@ typedef struct {
 	unsigned __int64	vsx_pend_queue_sync_write;
 	unsigned __int64	vsx_pend_queue_async_read;
 	unsigned __int64	vsx_pend_queue_async_write;
+	unsigned __int64	vsx_queue_histo_sync_read_time;
+	unsigned __int64	vsx_queue_histo_sync_read_count;
+	unsigned __int64	vsx_queue_histo_async_read_time;
+	unsigned __int64	vsx_queue_histo_async_read_count;
+	unsigned __int64	vsx_queue_histo_sync_write_time;
+	unsigned __int64	vsx_queue_histo_sync_write_count;
+	unsigned __int64	vsx_queue_histo_async_write_time;
+	unsigned __int64	vsx_queue_histo_async_write_count;
+	unsigned __int64	vsx_total_histo_read_time;
+	unsigned __int64	vsx_total_histo_read_count;
+	unsigned __int64	vsx_total_histo_write_time;
+	unsigned __int64	vsx_total_histo_write_count;
+	unsigned __int64	vsx_disk_histo_read_time;
+	unsigned __int64	vsx_disk_histo_read_count;
+	unsigned __int64	vsx_disk_histo_write_time;
+	unsigned __int64	vsx_disk_histo_write_count;
+	unsigned __int64	dp_dirty_total_io;
 	char zpool_name[MAXNAMELEN];
 } zpool_perf_counters;
 
@@ -710,6 +734,7 @@ extern int zfs_secpolicy_destroy_perms(const char *, cred_t *);
 extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
 extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
+extern void latency_stats(uint64_t* histo, unsigned int buckets, stat_pair* lat);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,
