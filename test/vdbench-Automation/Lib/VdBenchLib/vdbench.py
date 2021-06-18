@@ -208,20 +208,12 @@ class ResultCreation():
         # available = res.json()[0]['AvailableSystemMemory']['Value']
         sync = res.json()[0]['IldcConfigurationData']['IldcSyncMode']
         primaycach = res.json()[0]['IldcConfigurationData']['IldcPrimaryCacheMode']
-        # ssy = int(ram) - int(available)
-        # ssy = (round((ssy)/1073741824,2))
-        # ssy = str(ssy) + ' GB'
-        ssy = int(ram) * 0.65
-        if self.merge_list[0] != '-':
-            zfs = int(self.zfs_max)/1073741824
-            ssy = int(round((ssy)/1073741824, 2))
-            ssy = ssy - zfs
-            zfs = str(round(zfs, 2))
-            ssy = str(int(ssy)) + ' GB'
-            zfs = zfs + ' GB'
-        else:
-            zfs = '-'
-            ssy = str(int(ssy)) + ' GB'
+        if configur.get('zfs value', 'primarycache').lower() != 'default':
+            primaycach = configur.get('zfs value', 'primarycache').lower()
+        zfs = round((float(self.zfs_max)/1073741824),2)
+        ssy = round((float(ram) * 0.65)/1073741824, 2) - zfs
+        zfs = str(float(zfs)) + ' GB'
+        ssy = str(float(ssy)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
                          str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp]
     def run(self):
@@ -278,12 +270,8 @@ class ResultCreation():
                     list_data[2] = str(round(float(_.split()[6])))
                 if _.split()[0] == 'tod':
                     flag = 1
-        if vd_name.lower().strip() != 'standard':
-            os_mem, ddt, comp, dedup = self.zfs_data()
-            self.merge_list = [os_mem, ddt, dedup, comp, list_data[2], list_data[1], list_data[0]]
-        else:
-            self.merge_list = ['-', '-', '-', '-', list_data[2], list_data[1], list_data[0]]
-            self.zfs_max = '-'
+        os_mem, ddt, comp, dedup = self.zfs_data()
+        self.merge_list = [os_mem, ddt, dedup, comp, list_data[2], list_data[1], list_data[0]]
         self.start_update_html(vd_name, workload)
     def zfs_data(self):
         '''
@@ -302,13 +290,11 @@ class ResultCreation():
             process.stdin.write("kstat spl:0:spl_misc:os_mem_alloc" + "\n")
             process.stdin.write("zpool list" + "\n")
             process.stdin.write("zfs get compressratio" + "\n")
-            process.stdin.write("kstat.exe zfs:0:tunable:zfs_arc_meta_limit" + "\n")
-            process.stdin.write("kstat.exe zfs:0:tunable:zfs_arc_meta_limit" + "\n")
-            process.stdin.write("zfs get primarycache" + "\n")
-            process.stdin.write("zfs get sync" + "\n")
+            process.stdin.write("kstat.exe -p zfs:0:tunable:zfs_arc_max" + "\n")
             process.stdin.close()
             output = process.stdout.read().split('\n')
             count = 0
+            os_mem = ddt = comp = dedup = '-'
             for _ in output:
                 if count == 1:
                     count = 0
@@ -324,10 +310,12 @@ class ResultCreation():
                     count = 1
                 if 'PROPERTY       VALUE  SOURCE' in _:
                     count = 1
-                if 'zfs_arc_meta_limit' in _:
+                if 'zfs_arc_max' in _:
                     self.zfs_max = _.split()[-1]
-            ddt = str(round(ddt/1048576, 2))
-            os_mem = str(round(int(os_mem)/1073741824, 2))
+            if ddt != '-':
+                ddt = str(round(ddt/1048576, 2))
+            if os_mem != '-':
+                os_mem = str(round(float(os_mem)/1073741824, 2))
             return os_mem, ddt, comp, dedup
         except Exception as error:
             LogCreat().logger_error.error(error)
