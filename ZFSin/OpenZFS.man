@@ -374,6 +374,321 @@
 						detailLevel  = "standard">
 					</counter>
 				</counterSet>
+				<counterSet
+					guid        = "{ECA921B0-F6A9-4710-A3A8-DE6FFCFF33A0}"
+					uri         = "ZFSin.IOPS.THROUGHPUT.PER.VDEV"
+					name        = "OpenZFS vdev"
+					description = "Collect per vdev stats in each zpool"
+					symbol      = "ZFSinPerfVdev"
+					instances   = "multiple"
+				>
+					<structs>
+						<struct
+							name="ZFSinVdevValues"
+							type="zpool_perf_counters"
+						/>
+					</structs>
+					<counter
+						id           = "1"
+						uri          = "ZFSin.read_iops"
+						name         = "Reads/sec"
+						struct       = "read_iops"
+						field        = "read_iops"
+						description  = "Read IO/sec."
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "2"
+						uri          = "ZFSin.write_iops"
+						name         = "Writes/sec"
+						struct       = "write_iops"
+						field        = "write_iops"
+						description  = "Write IO/sec."
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "3"
+						uri          = "ZFSin.read_bytes"
+						name         = "Read Bytes/sec"
+						struct       = "read_bytes"
+						field        = "read_bytes"
+						description  = "Read Throughput/sec."
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "4"
+						uri          = "ZFSin.write_bytes"
+						name         = "Write Bytes/sec"
+						struct       = "write_bytes"
+						field        = "write_bytes"
+						description  = "Write Throughput/sec."
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "5"
+						uri          = "ZFSin.vsx_active_queue_sync_read"
+						name         = "Active_Sync_Reads"
+						struct       = "vsx_active_queue_sync_read"
+						field        = "vsx_active_queue_sync_read"
+						description  = "vsx_active_queue_sync_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "6"
+						uri          = "ZFSin.vsx_active_queue_sync_write"
+						name         = "Active_Sync_Writes"
+						struct       = "vsx_active_queue_sync_write"
+						field        = "vsx_active_queue_sync_write"
+						description  = "vsx_active_queue_sync_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "7"
+						uri          = "ZFSin.vsx_active_queue_async_read"
+						name         = "Active_Async_Reads"
+						struct       = "vsx_active_queue_async_read"
+						field        = "vsx_active_queue_async_read"
+						description  = "vsx_active_queue_async_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "8"
+						uri          = "ZFSin.vsx_active_queue_async_write"
+						name         = "Active_Async_Writes"
+						struct       = "vsx_active_queue_async_write"
+						field        = "vsx_active_queue_async_write"
+						description  = "vsx_active_queue_async_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "9"
+						uri          = "ZFSin.vsx_pend_queue_sync_read "
+						name         = "Pending_Sync_Reads"
+						struct       = "vsx_pend_queue_sync_read"
+						field        = "vsx_pend_queue_sync_read"
+						description  = "vsx_pend_queue_sync_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "10"
+						uri          = "ZFSin.vsx_pend_queue_sync_write "
+						name         = "Pending_Sync_Writes"
+						struct       = "vsx_pend_queue_sync_write"
+						field        = "vsx_pend_queue_sync_write"
+						description  = "vsx_pend_queue_sync_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "11"
+						uri          = "ZFSin.vsx_pend_queue_async_read"
+						name         = "Pending_Async_Reads"
+						struct       = "vsx_pend_queue_async_read"
+						field        = "vsx_pend_queue_async_read"
+						description  = "vsx_pend_queue_async_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "12"
+						uri          = "ZFSin.vsx_pend_queue_async_write "
+						name         = "Pending_Async_Writes"
+						struct       = "vsx_pend_queue_async_write"
+						field        = "vsx_pend_queue_async_write"
+						description  = "vsx_pend_queue_async_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "13"
+						uri          = "ZFSin.vsx_queue_histo_sync_read_time"
+						name         = "Wait_Time_Sync_Read_ns"
+						struct       = "vsx_queue_histo_sync_read_time"
+						field        = "vsx_queue_histo_sync_read_time"
+						description  = "vsx_queue_histo_sync_read_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "14"
+						uri          = "ZFSin.vsx_queue_histo_sync_read_count"
+						name         = "Wait_Count_Sync_Read"
+						struct       = "vsx_queue_histo_sync_read_count"
+						field        = "vsx_queue_histo_sync_read_count"
+						description  = "vsx_queue_histo_sync_read_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "15"
+						uri          = "ZFSin.vsx_queue_histo_async_read_time"
+						name         = "Wait_Time_Async_Read_ns"
+						struct       = "vsx_queue_histo_async_read_time"
+						field        = "vsx_queue_histo_async_read_time"
+						description  = "vsx_queue_histo_async_read_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "16"
+						uri          = "ZFSin.vsx_queue_histo_async_read_count"
+						name         = "Wait_Count_Async_Read"
+						struct       = "vsx_queue_histo_async_read_count"
+						field        = "vsx_queue_histo_async_read_count"
+						description  = "vsx_queue_histo_async_read_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "17"
+						uri          = "ZFSin.vsx_queue_histo_sync_write_time"
+						name         = "Wait_Time_Sync_Write_ns"
+						struct       = "vsx_queue_histo_sync_write_time"
+						field        = "vsx_queue_histo_sync_write_time"
+						description  = "vsx_queue_histo_sync_write_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "18"
+						uri          = "ZFSin.vsx_queue_histo_sync_write_count"
+						name         = "Wait_Count_Sync_Write"
+						struct       = "vsx_queue_histo_sync_write_count"
+						field        = "vsx_queue_histo_sync_write_count"
+						description  = "vsx_queue_histo_sync_write_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "19"
+						uri          = "ZFSin.vsx_queue_histo_async_write_time"
+						name         = "Wait_Time_Async_Write_ns"
+						struct       = "vsx_queue_histo_async_write_time"
+						field        = "vsx_queue_histo_async_write_time"
+						description  = "vsx_queue_histo_async_write_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "20"
+						uri          = "ZFSin.vsx_queue_histo_async_write_count"
+						name         = "Wait_Count_Async_Write"
+						struct       = "vsx_queue_histo_async_write_count"
+						field        = "vsx_queue_histo_async_write_count"
+						description  = "vsx_queue_histo_async_write_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "21"
+						uri          = "ZFSin.vsx_total_histo_read_time"
+						name         = "Wait_Time_Total_Read_ns"
+						struct       = "vsx_total_histo_read_time"
+						field        = "vsx_total_histo_read_time"
+						description  = "vsx_total_histo_read_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "22"
+						uri          = "ZFSin.vsx_total_histo_read_count"
+						name         = "Wait_Count_Total_Read"
+						struct       = "vsx_total_histo_read_count"
+						field        = "vsx_total_histo_read_count"
+						description  = "vsx_total_histo_read_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "23"
+						uri          = "ZFSin.vsx_total_histo_write_time"
+						name         = "Wait_Time_Total_Write_ns"
+						struct       = "vsx_total_histo_write_time"
+						field        = "vsx_total_histo_write_time"
+						description  = "vsx_total_histo_write_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "24"
+						uri          = "ZFSin.vsx_total_histo_write_count"
+						name         = "Wait_Count_Total_Write"
+						struct       = "vsx_total_histo_write_count"
+						field        = "vsx_total_histo_write_count"
+						description  = "vsx_total_histo_write_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "25"
+						uri          = "ZFSin.vsx_disk_histo_read_time"
+						name         = "Wait_Time_Disk_Read_ns"
+						struct       = "vsx_disk_histo_read_time"
+						field        = "vsx_disk_histo_read_time"
+						description  = "vsx_disk_histo_read_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "26"
+						uri          = "ZFSin.vsx_disk_histo_read_count"
+						name         = "Wait_Count_Disk_Read"
+						struct       = "vsx_disk_histo_read_count"
+						field        = "vsx_disk_histo_read_count"
+						description  = "vsx_disk_histo_read_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "27"
+						uri          = "ZFSin.vsx_disk_histo_write_time"
+						name         = "Wait_Time_Disk_Write_ns"
+						struct       = "vsx_disk_histo_write_time"
+						field        = "vsx_disk_histo_write_time"
+						description  = "vsx_disk_histo_write_time"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "28"
+						uri          = "ZFSin.vsx_disk_histo_write_count"
+						name         = "Wait_Count_Disk_Write"
+						struct       = "vsx_disk_histo_write_count"
+						field        = "vsx_disk_histo_write_count"
+						description  = "vsx_disk_histo_write_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "29"
+						uri          = "ZFSin.total_iops"
+						name         = "Transfers/sec"
+						struct       = "total_iops"
+						field        = "total_iops"
+						description  = "Total IO/sec of vdevs"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "30"
+						uri          = "ZFSin.total_bytes"
+						name         = "Total Bytes/sec"
+						struct       = "total_bytes"
+						field        = "total_bytes"
+						description  = "Amount of bytes written and read/sec"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+			</counterSet>
 			</provider>
 		</counters>
 	</instrumentation>

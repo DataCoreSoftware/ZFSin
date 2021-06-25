@@ -474,6 +474,30 @@ ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID 
 
 }
 
+NTSTATUS NTAPI
+ZFSinPerfVdevCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
+	UNREFERENCED_PARAMETER(Context);
+
+	switch (Type) {
+	case PcwCallbackEnumerateInstances:
+	{
+		ZFSinPerfVdevEnumerate(Info->EnumerateInstances);
+
+		break;
+	}
+	case PcwCallbackCollectData:
+	{
+		ZFSinPerfVdevCollect(Info->CollectData);
+
+		break;
+	}
+	default: break;
+	}
+
+	return STATUS_SUCCESS;
+}
+
+
 
 PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName)
 {
@@ -497,6 +521,46 @@ PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName)
 	return InstanceName;
 }
 
+void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
+	spa_t* spa_perf = NULL;
+	NTSTATUS status;
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+	mutex_enter(&spa_namespace_lock);
+	while ((spa_perf = spa_next(spa_perf)) != NULL) {
+		vdev_t* vd = spa_perf->spa_root_vdev;
+		char vdev_zpool[ZFS_MAX_DATASET_NAME_LEN] = { 0 };
+
+		for (int c = 0; c < vd->vdev_children; c++) {
+			char* vdev_name = vd->vdev_child[c]->vdev_path;
+			snprintf(vdev_zpool, ZFS_MAX_DATASET_NAME_LEN, "%s_%s", vdev_name + 5, spa_perf->spa_name);  /* Neglecting first five characters of vdev_name */
+
+			ANSI_STRING ansi_vdev;
+			RtlInitAnsiString(&ansi_vdev, vdev_zpool);
+			status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_vdev, FALSE);
+
+			if (!NT_SUCCESS(status)) {
+				TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",
+					__func__, __LINE__, &ansi_vdev);
+				continue;
+			}
+
+			status = AddZFSinPerfVdev(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
+			if (!NT_SUCCESS(status)) {
+				TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
+			}
+		}
+	}
+	mutex_exit(&spa_namespace_lock);
+	UNICODE_STRING total;
+	RtlInitUnicodeString(&total, L"_Total");
+	status = AddZFSinPerfVdev(EnumerateInstances.Buffer, MapInvalidChars(&total), 0, NULL);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
+	}
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
 
 void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 	NTSTATUS status = STATUS_SUCCESS;
@@ -525,6 +589,7 @@ void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
+	mutex_exit(&spa_namespace_lock);
 
 	UNICODE_STRING total;
 	RtlInitUnicodeString(&total, L"_Total");
@@ -533,7 +598,6 @@ void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 	}
 
-	mutex_exit(&spa_namespace_lock);
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
@@ -564,62 +628,73 @@ latency_stats(uint64_t *histo, unsigned int buckets, stat_pair *lat)
 
 void
 update_perf(vdev_stat_ex_t *vsx, vdev_stat_t *vs, ddt_object_t *ddo, dsl_pool_t* spad, zpool_perf_counters* perf) {
+	if (!perf)
+		return;
 
-	perf->ddt_entry_count = ddo->ddo_count;
-	perf->ddt_dspace = ddo->ddo_dspace * ddo->ddo_count;
-	perf->ddt_mspace = ddo->ddo_mspace * ddo->ddo_count;
+	if (ddo) {
+		perf->ddt_entry_count = ddo->ddo_count;
+		perf->ddt_dspace = ddo->ddo_dspace * ddo->ddo_count;
+		perf->ddt_mspace = ddo->ddo_mspace * ddo->ddo_count;
+	}
 
-	perf->read_iops = vs->vs_ops[ZIO_TYPE_READ];
-	perf->write_iops = vs->vs_ops[ZIO_TYPE_WRITE];
-	perf->read_bytes = vs->vs_bytes[ZIO_TYPE_READ];
-	perf->write_bytes = vs->vs_bytes[ZIO_TYPE_WRITE];
-	perf->total_bytes = vs->vs_bytes[ZIO_TYPE_WRITE] + vs->vs_bytes[ZIO_TYPE_READ];
-	perf->total_iops = vs->vs_ops[ZIO_TYPE_WRITE] + vs->vs_ops[ZIO_TYPE_READ];
+	if (vs) {
+		perf->read_iops = vs->vs_ops[ZIO_TYPE_READ];
+		perf->write_iops = vs->vs_ops[ZIO_TYPE_WRITE];
+		perf->read_bytes = vs->vs_bytes[ZIO_TYPE_READ];
+		perf->write_bytes = vs->vs_bytes[ZIO_TYPE_WRITE];
+		perf->total_bytes = vs->vs_bytes[ZIO_TYPE_WRITE] + vs->vs_bytes[ZIO_TYPE_READ];
+		perf->total_iops = vs->vs_ops[ZIO_TYPE_WRITE] + vs->vs_ops[ZIO_TYPE_READ];
+	}
 
-	perf->vsx_active_queue_sync_read = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_READ];
-	perf->vsx_active_queue_sync_write = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_WRITE];
-	perf->vsx_active_queue_async_read = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_READ];
-	perf->vsx_active_queue_async_write = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_WRITE];
-	perf->vsx_pend_queue_sync_read = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_READ];
-	perf->vsx_pend_queue_sync_write = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_WRITE];
-	perf->vsx_pend_queue_async_read = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_READ];
-	perf->vsx_pend_queue_async_write = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_WRITE];
+	if (vsx) {
+		perf->vsx_active_queue_sync_read = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_READ];
+		perf->vsx_active_queue_sync_write = vsx->vsx_active_queue[ZIO_PRIORITY_SYNC_WRITE];
+		perf->vsx_active_queue_async_read = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_READ];
+		perf->vsx_active_queue_async_write = vsx->vsx_active_queue[ZIO_PRIORITY_ASYNC_WRITE];
+		perf->vsx_pend_queue_sync_read = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_READ];
+		perf->vsx_pend_queue_sync_write = vsx->vsx_pend_queue[ZIO_PRIORITY_SYNC_WRITE];
+		perf->vsx_pend_queue_async_read = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_READ];
+		perf->vsx_pend_queue_async_write = vsx->vsx_pend_queue[ZIO_PRIORITY_ASYNC_WRITE];
 
-	stat_pair lat;
-	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_queue_histo_sync_read_time = lat.total;
-	perf->vsx_queue_histo_sync_read_count = lat.count;
 
-	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_queue_histo_sync_write_time = lat.total;
-	perf->vsx_queue_histo_sync_write_count = lat.count;
+		stat_pair lat;
+		latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_queue_histo_sync_read_time = lat.total;
+		perf->vsx_queue_histo_sync_read_count = lat.count;
 
-	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_queue_histo_async_read_time = lat.total;
-	perf->vsx_queue_histo_async_read_count = lat.count;
+		latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_SYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_queue_histo_sync_write_time = lat.total;
+		perf->vsx_queue_histo_sync_write_count = lat.count;
 
-	latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_queue_histo_async_write_time = lat.total;
-	perf->vsx_queue_histo_async_write_count = lat.count;
+		latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_queue_histo_async_read_time = lat.total;
+		perf->vsx_queue_histo_async_read_count = lat.count;
 
-	latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_total_histo_read_time = lat.total;
-	perf->vsx_total_histo_read_count = lat.count;
+		latency_stats(&vsx->vsx_queue_histo[ZIO_PRIORITY_ASYNC_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_queue_histo_async_write_time = lat.total;
+		perf->vsx_queue_histo_async_write_count = lat.count;
 
-	latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_total_histo_write_time = lat.total;
-	perf->vsx_total_histo_write_count = lat.count;
+		latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_total_histo_read_time = lat.total;
+		perf->vsx_total_histo_read_count = lat.count;
 
-	latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_disk_histo_read_time = lat.total;
-	perf->vsx_disk_histo_read_count = lat.count;
+		latency_stats(&vsx->vsx_total_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_total_histo_write_time = lat.total;
+		perf->vsx_total_histo_write_count = lat.count;
 
-	latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
-	perf->vsx_disk_histo_write_time = lat.total;
-	perf->vsx_disk_histo_write_count = lat.count;
+		latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_READ][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_disk_histo_read_time = lat.total;
+		perf->vsx_disk_histo_read_count = lat.count;
 
-	perf->dp_dirty_total_io = spad->dp_dirty_total;
+		latency_stats(&vsx->vsx_disk_histo[ZIO_TYPE_WRITE][0], VDEV_L_HISTO_BUCKETS, &lat);
+		perf->vsx_disk_histo_write_time = lat.total;
+		perf->vsx_disk_histo_write_count = lat.count;
+	}
+
+	if(spad)
+		perf->dp_dirty_total_io = spad->dp_dirty_total;
 }
+
 
 void
 update_total_perf(zpool_perf_counters* perf, zpool_perf_counters* total_perf) {
@@ -659,6 +734,7 @@ update_total_perf(zpool_perf_counters* perf, zpool_perf_counters* total_perf) {
 	total_perf->dp_dirty_total_io += perf->dp_dirty_total_io;
 }
 
+
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	NTSTATUS status = STATUS_SUCCESS;
 	UNICODE_STRING unicodeName;
@@ -670,7 +746,6 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	zpool_perf_counters total_perf = { 0 };
 
 	mutex_enter(&spa_namespace_lock);
-
 	while ((spa_perf = spa_next(spa_perf)) != NULL) {
 		zpool_perf_counters perf = { 0 };
 		spa_open_ref(spa_perf, FTAG);
@@ -703,6 +778,7 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
+	mutex_exit(&spa_namespace_lock);
 
 	UNICODE_STRING total;
 	RtlInitUnicodeString(&total, L"_Total");
@@ -711,10 +787,63 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 	}
 
-	mutex_exit(&spa_namespace_lock);
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
+void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
+	NTSTATUS status = STATUS_SUCCESS;
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+
+	spa_t* spa_perf = NULL;
+	zpool_perf_counters total_perf_vdev = { 0 };
+
+	mutex_enter(&spa_namespace_lock);
+	while ((spa_perf = spa_next(spa_perf)) != NULL) {
+		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
+		vdev_t* vd = spa_perf->spa_root_vdev;
+		vdev_stat_t vs = { 0 };
+		vdev_stat_ex_t cvsx = { 0 };
+		char vdev_zpool[ZFS_MAX_DATASET_NAME_LEN] = { 0 };
+		zpool_perf_counters perf_vdev = { 0 };
+
+		for (int c = 0; c < vd->vdev_children; c++) {
+			char* vdev_name = vd->vdev_child[c]->vdev_path;
+			snprintf(vdev_zpool, ZFS_MAX_DATASET_NAME_LEN, "%s_%s", vdev_name + 5, spa_perf->spa_name);		/* Neglecting first five characters of vdev_name */
+
+			ANSI_STRING ansi_vdev;
+			RtlInitAnsiString(&ansi_vdev, vdev_zpool);
+			status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_vdev, FALSE);
+
+			vdev_t* cvd = vd->vdev_child[c];
+			vdev_stat_t* cvs = &cvd->vdev_stat;
+			vdev_stat_ex_t* cvsxy = &cvd->vdev_stat_ex;
+
+			vdev_get_child_stat_ex(cvd, &cvsx, cvsxy);
+			vdev_get_child_stat(cvd, &vs, cvs);
+
+			update_perf(&cvsx, &vs, NULL, NULL, &perf_vdev);
+			update_total_perf(&perf_vdev, &total_perf_vdev);
+
+			status = AddZFSinPerfVdev(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf_vdev);
+
+			if (!NT_SUCCESS(status)) {
+				TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
+			}
+		}
+		spa_config_exit(spa_perf, SCL_ALL, FTAG);
+	}
+	mutex_exit(&spa_namespace_lock);
+
+	UNICODE_STRING total;
+	RtlInitUnicodeString(&total, L"_Total");
+	status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&total), 0, &total_perf_vdev);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
+	}
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
 
 static void
 history_str_free(char *buf)
@@ -1870,7 +1999,7 @@ put_nvlist(zfs_cmd_t *zc, nvlist_t *nvl)
 
 	size = fnvlist_size(nvl);
 
-	TraceEvent(8, "ZFS: %s trying copyout %p:%d (max)\n", __func__, zc->zc_nvlist_dst, zc->zc_nvlist_dst_size);
+	TraceEvent(8, "ZFS: %s trying copyout %p:%ld (max)\n", __func__, zc->zc_nvlist_dst, zc->zc_nvlist_dst_size);
 
 	if (size > zc->zc_nvlist_dst_size) {
 		error = SET_ERROR(ENOMEM);
@@ -4420,10 +4549,10 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 #ifdef _WIN32
 		zvol_state_t *zv;
 		extern zvol_state_t *zvol_name2minor(const char *name, minor_t *minor);
-		extern void wzvol_clear_targetid(uint8_t targetid, uint8_t lun);
+		extern void wzvol_clear_targetid(uint8_t targetid, uint8_t lun, zvol_state_t *zv);
 		zv = zvol_name2minor(zc->zc_name, NULL);
 		if (zv) {
-			wzvol_clear_targetid(zv->zv_target_id,zv->zv_lun_id,zv);
+			wzvol_clear_targetid(zv->zv_target_id, zv->zv_lun_id, zv);
 			zvol_close_impl(zv, FWRITE, 0, NULL);
 		}
 #endif
@@ -8374,10 +8503,10 @@ zfs_attach(void)
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL);
+		dprintf("ZFS: Couldn't create the device object /dev/zfs %S\n", ZFS_DEV_KERNEL);
 		return ntStatus;
 	}
-	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
+	dprintf("ZFS: created kernel device node: %p: name %S\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
 
 
 	UNICODE_STRING fsDiskDeviceName;
@@ -8420,7 +8549,7 @@ zfs_attach(void)
 		&ntWin32NameString, &ntUnicodeString);
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV);
+		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs %s\n", ZFS_DEV);
 		ObDereferenceObject(ioctlDeviceObject);
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
@@ -8436,6 +8565,11 @@ zfs_attach(void)
 	NTSTATUS pcwStatus = RegisterZFSinPerf(ZFSinPerfCallBack, NULL);
 	if (!NT_SUCCESS(pcwStatus)) {
 		TraceEvent(TRACE_ERROR, "ZFSin perf registration failed\n");
+	}
+
+	pcwStatus = RegisterZFSinPerfVdev(ZFSinPerfVdevCallBack, NULL);
+	if (!NT_SUCCESS(pcwStatus)) {
+		TraceEvent(TRACE_ERROR, "ZFSin vdev perf registration failed\n");
 	}
 
 #if 0
@@ -8546,6 +8680,7 @@ zfs_detach(void)
 #endif
 	zfsdev_state_t *zs, *zsprev = NULL;
 
+	UnregisterZFSinPerfVdev();
 	UnregisterZFSinPerf();
 
 #ifdef linux
