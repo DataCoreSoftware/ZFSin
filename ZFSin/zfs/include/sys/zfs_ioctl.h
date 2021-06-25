@@ -675,6 +675,7 @@ typedef struct
 
 #define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
+/* common structure used for zpool and vdev stats */
 typedef struct {
 	unsigned __int64	read_iops;
 	unsigned __int64	write_iops;
@@ -682,9 +683,9 @@ typedef struct {
 	unsigned __int64	read_bytes;
 	unsigned __int64	write_bytes;
 	unsigned __int64	total_bytes;
-	unsigned __int64	ddt_entry_count;	/* number of elments in ddt */
-	unsigned __int64	ddt_dspace;			/* size of ddt on disk		*/
-	unsigned __int64	ddt_mspace;			/* size of ddt in-core		*/
+	unsigned __int64	ddt_entry_count;	/* number of elments in ddt */	/*zpool only*/
+	unsigned __int64	ddt_dspace;			/* size of ddt on disk		*/	/*zpool only*/
+	unsigned __int64	ddt_mspace;			/* size of ddt in-core		*/	/*zpool only*/
 	unsigned __int64	vsx_active_queue_sync_read;
 	unsigned __int64	vsx_active_queue_sync_write;
 	unsigned __int64	vsx_active_queue_async_read;
@@ -709,8 +710,8 @@ typedef struct {
 	unsigned __int64	vsx_disk_histo_read_count;
 	unsigned __int64	vsx_disk_histo_write_time;
 	unsigned __int64	vsx_disk_histo_write_count;
-	unsigned __int64	dp_dirty_total_io;
-	char zpool_name[MAXNAMELEN];
+	unsigned __int64	dp_dirty_total_io;		/*zpool only*/
+	char zpool_name[MAXNAMELEN];		/*zpool only*/
 } zpool_perf_counters;
 
 
@@ -735,6 +736,8 @@ extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
 extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
 extern void latency_stats(uint64_t* histo, unsigned int buckets, stat_pair* lat);
+extern void vdev_get_child_stat(vdev_t* cvd, vdev_stat_t* vs, vdev_stat_t* cvs);
+extern void vdev_get_child_stat_ex(vdev_t* cvd, vdev_stat_ex_t* vsx, vdev_stat_ex_t* cvsx);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,
@@ -772,10 +775,12 @@ NTSTATUS NTAPI
 ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context);
 
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData);
+void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData);
 
 PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName);
 
 void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
+void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 
 #endif	/* _KERNEL */
 
