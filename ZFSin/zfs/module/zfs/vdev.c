@@ -3766,7 +3766,7 @@ vdev_accessible(vdev_t *vd, zio_t *zio)
 	return (B_TRUE);
 }
 
-static void
+void
 vdev_get_child_stat(vdev_t *cvd, vdev_stat_t *vs, vdev_stat_t *cvs)
 {
 	for (int t = 0; t < VS_ZIO_TYPES; t++) {
@@ -3797,7 +3797,7 @@ vdev_is_spacemap_addressable(vdev_t *vd)
 /*
  * Get extended stats
  */
-static void
+void
 vdev_get_child_stat_ex(vdev_t *cvd, vdev_stat_ex_t *vsx, vdev_stat_ex_t *cvsx)
 {
 	int t, b;
