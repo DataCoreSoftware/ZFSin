@@ -15,7 +15,7 @@ DRIVER_INITIALIZE DriverEntry;
 
 extern int initDbgCircularBuffer(void);
 extern int finiDbgCircularBuffer(void);
-extern int spl_start(void);
+extern int spl_start(PUNICODE_STRING RegistryPath);
 extern int spl_stop(void);
 extern int zfs_start(void);
 extern void zfs_stop(void);
@@ -48,6 +48,7 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 	ZFSWppCleanup(DriverObject);
 }
 
+extern uint64_t spl_GetZfsTotalMemory(PUNICODE_STRING RegistryPath);
 /*
  * Setup a Storage Miniport Driver, used only by ZVOL to create virtual disks. 
  */
@@ -64,7 +65,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 	/* Setup print buffer, since we print from SPL */
 	initDbgCircularBuffer();
 
-	spl_start();
+	spl_start(pRegistryPath);
 
 	kstat_osx_init(pRegistryPath);
 
@@ -164,27 +165,11 @@ int spl_check_assign_types(kstat_named_t *kold, PKEY_VALUE_FULL_INFORMATION regB
 			return 0;
 		}
 		uint64_t newvalue = *(uint64_t *)((uint8_t *)regBuffer + regBuffer->DataOffset);
-		if (strcmp(kold->name, "zfs_total_memory_limit") == 0) {
-			if (newvalue >= 2ULL * 1024ULL * 1024ULL * 1024ULL && newvalue < total_memory) {
-				dprintf("%s:%d: total_memory 0x%llx -> %llx\n", __func__,  __LINE__, total_memory, MIN(newvalue, total_memory));
-				total_memory = MIN(newvalue, total_memory);
-				physmem = total_memory / PAGE_SIZE;
-				spl_minimal_physmem_p_logic();
-				KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: kstat '%s': 0x%llx -> 0x%llx\n", __func__,
-					kold->name,
-					kold->value.ui64,
-					newvalue));
-				kold->value.ui64 = newvalue;
-			} else {
-				dprintf("%s:%d: Invalid value 0x%llx for %s, value should be >=0x%llx and <=0x%llx\n", __func__,  __LINE__, newvalue, kold->name, (2ULL * 1024ULL * 1024ULL * 1024ULL), total_memory);
-			}
-		} else {
-			KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: kstat '%s': 0x%llx -> 0x%llx\n", __func__,
-				kold->name,
-				kold->value.ui64,
-				newvalue));
-			kold->value.ui64 = newvalue;
-		}
+		KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: kstat '%s': 0x%llx -> 0x%llx\n", __func__,
+			kold->name,
+			kold->value.ui64,
+			newvalue));
+		kold->value.ui64 = newvalue;
 		return 1;
 	}
 
