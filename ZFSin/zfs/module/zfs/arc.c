@@ -385,6 +385,9 @@ static boolean_t arc_warm;
 /*
  * These tunables are for performance analysis.
  */
+extern uint64_t total_memory;
+extern uint64_t total_physical_memory;
+extern uint64_t real_total_memory;
 uint64_t zfs_arc_max;
 uint64_t zfs_arc_min;
 uint64_t zfs_arc_meta_limit = 0;
@@ -1130,6 +1133,7 @@ static inline void arc_hdr_clear_flags(arc_buf_hdr_t *hdr, arc_flags_t flags);
 
 static boolean_t l2arc_write_eligible(uint64_t, arc_buf_hdr_t *);
 static void l2arc_read_done(zio_t *);
+extern boolean_t spl_minimal_physmem_p_logic();
 
 
 /*
@@ -7456,6 +7460,20 @@ arc_kstat_update_cont(kstat_t *ksp, int rw)
 		zfs_arc_shrink_shift      = ks->arc_zfs_arc_shrink_shift.value.ui64;
 		zfs_arc_p_min_shift       = ks->arc_zfs_arc_p_min_shift.value.ui64;
 		zfs_arc_average_blocksize = ks->arc_zfs_arc_average_blocksize.value.ui64;
+#ifdef _KERNEL
+		if (ks->zfs_total_memory_limit.value.ui64 > total_memory &&
+				ks->zfs_total_memory_limit.value.ui64 < total_physical_memory) {
+			dprintf("%s Changing total memory limit to: %llu from: %llu. total physical memory: %llu\n", 
+					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, total_physical_memory);
+			total_memory = ks->zfs_total_memory_limit.value.ui64;
+			real_total_memory = total_memory;
+			physmem = total_memory / PAGE_SIZE;
+			spl_minimal_physmem_p_logic();
+		} else {
+			dprintf("%s Skip changing total memory limit to: %llu from: %llu. total physical memory: %llu\n", 
+					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, total_physical_memory);
+		}
+#endif
 
 	} else {
 
@@ -7482,6 +7500,9 @@ arc_kstat_update_cont(kstat_t *ksp, int rw)
 		ks->arc_zfs_arc_shrink_shift.value.ui64      = zfs_arc_shrink_shift;
 		ks->arc_zfs_arc_p_min_shift.value.ui64       = zfs_arc_p_min_shift;
 		ks->arc_zfs_arc_average_blocksize.value.ui64 = zfs_arc_average_blocksize;
+#ifdef _KERNEL
+		ks->zfs_total_memory_limit.value.ui64        = total_memory;
+#endif
 	}
 	return 0;
 }
