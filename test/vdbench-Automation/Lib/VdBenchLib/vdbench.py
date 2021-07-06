@@ -330,6 +330,7 @@ class ResultCreation():
         if configur.get('first run', 'run') == 'False':
             file1 = open(self.path, "r+")
             list_lines = file1.readlines()
+            file1.close()
             for index, val in enumerate(list_lines):
                 if val.strip() == '<td class="u-align-center u-border-1 '\
                     'u-border-grey-dark-1 u-table-cell"></td>':
@@ -339,8 +340,7 @@ class ResultCreation():
                     self.data_put.pop(0)
             with open(self.destiny, "w") as file:
                 for item in list_lines:
-                    file.write("%s\n" % item)
-            file.close()
+                    file.write("%s" % item)
             self.path = self.destiny
             self.glob_flag = 1
     def start_update_html(self, virtualdisk, workload):
@@ -365,6 +365,7 @@ class ResultCreation():
         update = '<td class="u-border-1 u-border-grey-30 u-table-cell u-table-cell-'
         file1 = open(self.path, "r+")
         list_lines = file1.readlines()
+        file1.close()
         number = self.update_lines(workload, virtualdisk)
         for index, val in enumerate(list_lines):
             vsi_new = update + str(number)
@@ -396,8 +397,7 @@ class ResultCreation():
                         'data-image-width="539" data-image-height="136">'
         with open(self.destiny, "w") as file:
             for item in list_lines:
-                file.write("%s\n" % item)
-        file.close()
+                file.write("%s" % item)
         msg = self.build + ' Result created succesfully'
         LogCreat().logger_info.info(msg)
         # except Exception as error:
