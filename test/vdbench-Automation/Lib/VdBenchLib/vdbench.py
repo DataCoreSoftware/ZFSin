@@ -340,7 +340,10 @@ class ResultCreation():
                     self.data_put.pop(0)
             with open(self.destiny, "w") as file:
                 for item in list_lines:
-                    file.write("%s" % item)
+                    if item.endswith("\n"):
+                        file.write("%s" % item)
+                    else:
+                        file.write("%s\n" % item)
             self.path = self.destiny
             self.glob_flag = 1
     def start_update_html(self, virtualdisk, workload):
@@ -397,7 +400,10 @@ class ResultCreation():
                         'data-image-width="539" data-image-height="136">'
         with open(self.destiny, "w") as file:
             for item in list_lines:
-                file.write("%s" % item)
+                if item.endswith("\n"):
+                    file.write("%s" % item)
+                else:
+                    file.write("%s\n" % item)
         msg = self.build + ' Result created succesfully'
         LogCreat().logger_info.info(msg)
         # except Exception as error:
