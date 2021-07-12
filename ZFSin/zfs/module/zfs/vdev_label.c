@@ -474,6 +474,8 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 		fnvlist_add_uint64(nv, ZPOOL_CONFIG_METASLAB_SHIFT,
 		    vd->vdev_ms_shift);
 		fnvlist_add_uint64(nv, ZPOOL_CONFIG_ASHIFT, vd->vdev_ashift);
+		TraceEvent(4,"%s:%d:Setting vdev ashift into nvlist, vdev_ashift= %d, vdev_id=%d, vdev_guid=%llu, vdev_path=%s, vdev_physpath=%s, vdev_isl2cache=%d, vdev_islog=%d, vdev_isspare=%d, vdev_spa=0x%p\n",
+			__func__, __LINE__, vd->vdev_ashift, vd->vdev_id, vd->vdev_guid, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_isl2cache, vd->vdev_islog, vd->vdev_isspare, vd->vdev_spa);
 		fnvlist_add_uint64(nv, ZPOOL_CONFIG_ASIZE,
 		    vd->vdev_asize);
 		fnvlist_add_uint64(nv, ZPOOL_CONFIG_IS_LOG, vd->vdev_islog);

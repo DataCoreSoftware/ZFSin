@@ -1761,7 +1761,7 @@ spa_vdev_remove_log(vdev_t *vd, uint64_t *txg)
 	spa_t *spa = vd->vdev_spa;
 	int error = 0;
 
-	dprintf("%s:%d: vd = 0x%p, txg = 0x%p\n", __func__, __LINE__, vd, txg);
+	TraceEvent(4,"%s:%d: vd = 0x%p,vdevpath=%s, vdevphypath=%s, vdevguid=%llu, txg = 0x%p\n", __func__, __LINE__, vd, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid, txg);
 	ASSERT(vd->vdev_islog);
 	ASSERT(vd == vd->vdev_top);
 
@@ -1922,8 +1922,10 @@ spa_vdev_remove_top_check(vdev_t *vd)
 	/*
 	 * All vdevs in normal class must have the same ashift.
 	 */
+	TraceEvent(4,"%s:%d:spa->spa_max_ashift = %d, spa_min_ashift = %d, vdev_ashift= %d, vdev_id=%d, vdev_guid=%llu, vdev_path=%s, vdev_physpath=%s, vdev_isl2cache=%d, vdev_islog=%d, vdev_isspare=%d, vdev_spa=0x%p\n",
+		__func__, __LINE__, spa->spa_max_ashift, spa->spa_min_ashift, vd->vdev_ashift, vd->vdev_id, vd->vdev_guid, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_isl2cache, vd->vdev_islog, vd->vdev_isspare, vd->vdev_spa);
 	if (spa->spa_max_ashift != spa->spa_min_ashift) {
-		dprintf("%s:%d: spa->spa_max_ashift = %d, spa->spa_min_ashift = %d. Returning %d\n",
+		dprintf("%s:%d: spa->spa_max_ashift = %d, spa->spa_min_ashift = %d. Returning, error %d\n",
 			__func__, __LINE__, spa->spa_max_ashift, spa->spa_min_ashift, EINVAL);
 		return (SET_ERROR(EINVAL));
 	}
@@ -1985,7 +1987,7 @@ spa_vdev_remove_top(vdev_t *vd, uint64_t *txg)
 	 */
 	error = spa_vdev_remove_top_check(vd);
 	if (error != 0) {
-		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
+		dprintf("%s:%d: vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu, Returning %d\n", __func__, __LINE__, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid, error);
 		return (error);
 	}
 
@@ -2164,7 +2166,7 @@ spa_vdev_remove(spa_t *spa, uint64_t guid, boolean_t unspare)
 		}
 	}
 
-	dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__,error);
 	return (error);
 }
 

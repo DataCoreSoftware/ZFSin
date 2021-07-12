@@ -7223,6 +7223,8 @@ spa_vdev_split_mirror(spa_t *spa, char *newname, nvlist_t *config,
 		    vml[c]->vdev_top->vdev_ms_shift) == 0);
 		VERIFY(nvlist_add_uint64(child[c], ZPOOL_CONFIG_ASIZE,
 		    vml[c]->vdev_top->vdev_asize) == 0);
+		TraceEvent(4, "%s:%d:setting the ashift value in nvlist ashift= %d, vdev_id=%d, vdev_guid=%llu, vdev_path=%s, vdev_physpath=%s\n",
+			__func__, __LINE__, vml[c]->vdev_top->vdev_ashift, vml[c]->vdev_top->vdev_id, vml[c]->vdev_top->vdev_guid, vml[c]->vdev_top->vdev_path ? vml[c]->vdev_top->vdev_path : "", vml[c]->vdev_top->vdev_physpath ? vml[c]->vdev_top->vdev_physpath : "");
 		VERIFY(nvlist_add_uint64(child[c], ZPOOL_CONFIG_ASHIFT,
 		    vml[c]->vdev_top->vdev_ashift) == 0);
 
