@@ -310,7 +310,7 @@ vdev_lookup_by_guid(vdev_t *vd, uint64_t guid)
 	int c;
 
 	if (vd->vdev_guid == guid) {
-		dprintf("%s:%d: vd->vdev_guid = %llu. Returning 0x%p\n", __func__, __LINE__, vd->vdev_guid, vd);
+		dprintf("%s:%d: vd->vdev_guid = %llu, vdev_path=%s, vdev_physpath=%s, Returning 0x%p\n", __func__, __LINE__, vd->vdev_guid, vd->vdev_path ? vd->vdev_path: "", vd->vdev_physpath ? vd->vdev_physpath : "", vd);
 		return (vd);
 	}
 
@@ -719,7 +719,9 @@ vdev_alloc(spa_t *spa, vdev_t **vdp, nvlist_t *nv, vdev_t *parent, uint_t id,
 	 * Get the alignment requirement.
 	 */
 	(void) nvlist_lookup_uint64(nv, ZPOOL_CONFIG_ASHIFT, &vd->vdev_ashift);
-
+	TraceEvent(4,"%s:%d:Getting the vdev ashift value from nvlist and set in vdev_ashift= %d, vdev_id=%d, vdev_guid=%llu, vdev_path=%s, vdev_physpath=%s\n",
+		__func__, __LINE__, vd->vdev_ashift, vd->vdev_id, vd->vdev_guid, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "");
+	
 	/*
 	 * Retrieve the vdev creation time.
 	 */
@@ -1210,10 +1212,14 @@ vdev_metaslab_group_create(vdev_t *vd)
 		 */
 		if (vd->vdev_top == vd && vd->vdev_ashift != 0 &&
 		    mc == spa_normal_class(spa) && vd->vdev_aux == NULL) {
+			TraceEvent(4,"%s:%d:Before modifying vdev_ashift= %d, vdev_path=%s, vdev_phypath=%s, spa_min_ashift = %d, spa_max_ashift=%d\n",
+				__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", spa->spa_min_ashift, spa->spa_max_ashift);
 			if (vd->vdev_ashift > spa->spa_max_ashift)
 				spa->spa_max_ashift = vd->vdev_ashift;
 			if (vd->vdev_ashift < spa->spa_min_ashift)
 				spa->spa_min_ashift = vd->vdev_ashift;
+			TraceEvent(4,"%s:%d:After modifying vdev_ashift= %d, vdev_path=%s, vdev_phypath=%s, spa_min_ashift = %d, spa_max_ashift=%d\n",
+				__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", spa->spa_min_ashift, spa->spa_max_ashift);
 		}
 	}
 }
@@ -1754,7 +1760,10 @@ vdev_open(vdev_t *vd)
 		vd->vdev_asize = asize;
 		vd->vdev_max_asize = max_asize;
 		if (vd->vdev_ashift == 0)
+		{
 			vd->vdev_ashift = ashift;
+			TraceEvent(4, "%s:%d: Setting vdev_ashift=%d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu\n", __func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid);
+		}
 
 	} else {
 		/*
@@ -1814,10 +1823,14 @@ vdev_open(vdev_t *vd)
 	if (vd->vdev_top == vd && vd->vdev_ashift != 0 &&
 	    vd->vdev_alloc_bias == VDEV_BIAS_NONE &&
 	    vd->vdev_aux == NULL) {
+		TraceEvent(4,"%s:%d:Before modifying vdev_ashift= %d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu, spa_min_ashift = %d, spa_max_ashift=%d\n",
+			__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid, spa->spa_min_ashift, spa->spa_max_ashift);
 		if (vd->vdev_ashift > spa->spa_max_ashift)
 			spa->spa_max_ashift = vd->vdev_ashift;
 		if (vd->vdev_ashift < spa->spa_min_ashift)
 			spa->spa_min_ashift = vd->vdev_ashift;
+		TraceEvent(4,"%s:%d:After modifying vdev_ashift= %d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu, spa_min_ashift = %d, spa_max_ashift=%d\n",
+			__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path :"", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid,  spa->spa_min_ashift, spa->spa_max_ashift);
 	}
 
 	/*
