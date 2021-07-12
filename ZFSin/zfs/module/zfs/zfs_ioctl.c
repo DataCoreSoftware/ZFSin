@@ -475,6 +475,30 @@ ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID 
 }
 
 NTSTATUS NTAPI
+ZFSinArcPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
+	UNREFERENCED_PARAMETER(Context);
+
+	switch (Type) {
+	case PcwCallbackEnumerateInstances:
+	{
+		ZFSinArcPerfEnumerate(Info->EnumerateInstances);
+
+		break;
+	}
+	case PcwCallbackCollectData:
+	{
+		ZFSinArcPerfCollect(Info->CollectData);
+
+		break;
+	}
+	default: break;
+	}
+
+	return STATUS_SUCCESS;
+
+}
+
+NTSTATUS NTAPI
 ZFSinPerfVdevCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
 	UNREFERENCED_PARAMETER(Context);
 
@@ -558,6 +582,27 @@ void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 	status = AddZFSinPerfVdev(EnumerateInstances.Buffer, MapInvalidChars(&total), 0, NULL);
 	if (!NT_SUCCESS(status)) {
 		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
+	}
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
+
+void ZFSinArcPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+
+	ANSI_STRING ansi_spa;
+	RtlInitAnsiString(&ansi_spa, "Total");
+
+	NTSTATUS status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",__func__, __LINE__, &ansi_spa);
+	}
+	else {
+		status = AddZFSinArcPerf(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinArcPerf failed - status 0x%x\n", __func__, __LINE__, status);
+		}
 	}
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
@@ -734,7 +779,7 @@ update_total_perf(zpool_perf_counters* perf, zpool_perf_counters* total_perf) {
 	total_perf->dp_dirty_total_io += perf->dp_dirty_total_io;
 }
 
-
+extern void arc_stats_counters_perfmon(arc_stats_counters* perf_arc);
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	NTSTATUS status = STATUS_SUCCESS;
 	UNICODE_STRING unicodeName;
@@ -790,6 +835,31 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
+void ZFSinArcPerfCollect(PCW_MASK_INFORMATION CollectData) {
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+
+	ANSI_STRING ansi_spa;
+	RtlInitAnsiString(&ansi_spa, "Total");
+
+	NTSTATUS status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",__func__, __LINE__, &ansi_spa);
+	}
+	else {
+		arc_stats_counters perf_arc = { 0 };
+		arc_stats_counters_perfmon(&perf_arc);
+
+		status = AddZFSinArcPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf_arc);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinArcPerf failed - status 0x%x\n", __func__, __LINE__, status);
+		}
+	}
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
+
+
 void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
 	NTSTATUS status = STATUS_SUCCESS;
 	UNICODE_STRING unicodeName;
@@ -838,7 +908,7 @@ void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
 
 	UNICODE_STRING total;
 	RtlInitUnicodeString(&total, L"_Total");
-	status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&total), 0, &total_perf_vdev);
+	status = AddZFSinPerfVdev(CollectData.Buffer, MapInvalidChars(&total), 0, &total_perf_vdev);
 	if (!NT_SUCCESS(status)) {
 		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerfVdev failed - status 0x%x\n", __func__, __LINE__, status);
 	}
@@ -8572,6 +8642,11 @@ zfs_attach(void)
 		TraceEvent(TRACE_ERROR, "ZFSin vdev perf registration failed\n");
 	}
 
+	pcwStatus = RegisterZFSinArcPerf(ZFSinArcPerfCallBack, NULL);
+	if (!NT_SUCCESS(pcwStatus)) {
+		TraceEvent(TRACE_ERROR, "ZFSin ARC perf registration failed\n");
+	}
+
 #if 0
 	// CDrom, I mean, really? ZFS?
 	PDEVICE_OBJECT cdDiskDeviceObject;
@@ -8682,6 +8757,8 @@ zfs_detach(void)
 
 	UnregisterZFSinPerfVdev();
 	UnregisterZFSinPerf();
+	UnregisterZFSinArcPerf();
+
 
 #ifdef linux
 	error = misc_deregister(&zfs_misc);
