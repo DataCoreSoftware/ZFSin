@@ -921,7 +921,11 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	}
 
 	if (ashift > 0)
+	{
+		dprintf("%s:%d:setting the ashift value in nvlist ashift= %d\n",
+			__func__, __LINE__, ashift);
 		nvlist_add_uint64(vdev, ZPOOL_CONFIG_ASHIFT, ashift);
+	}
 
 	CloseHandle(h);
 	return (vdev);
