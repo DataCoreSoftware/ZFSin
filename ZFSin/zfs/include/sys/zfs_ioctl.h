@@ -776,11 +776,13 @@ ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID 
 
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData);
 void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData);
+void ZFSinArcPerfCollect(PCW_MASK_INFORMATION CollectData);
 
 PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName);
 
 void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
+void ZFSinArcPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 
 #endif	/* _KERNEL */
 
