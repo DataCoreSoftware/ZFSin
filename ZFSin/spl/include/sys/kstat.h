@@ -303,6 +303,22 @@ typedef struct {
 	uint64_t	arcstat_l2_read_bytes;
 	uint64_t	arcstat_l2_write_bytes;
 	uint64_t	arcstat_l2_access_ps;
-} arc_stats_counters;
+
+	/* ZIL and SLOG counters */
+	uint64_t	zil_commit_count;
+	uint64_t	zil_commit_writer_count;
+	uint64_t	zil_itx_count;
+	uint64_t	zil_itx_indirect_count;
+	uint64_t	zil_itx_indirect_bytes;
+	uint64_t	zil_itx_copied_count;
+	uint64_t	zil_itx_copied_bytes;
+	uint64_t	zil_itx_needcopy_count;
+	uint64_t	zil_itx_needcopy_bytes;
+	uint64_t	zil_itx_metaslab_normal_count;
+	uint64_t	zil_itx_metaslab_normal_bytes;
+	uint64_t	zil_itx_metaslab_slog_count;
+	uint64_t	zil_itx_metaslab_slog_bytes;
+
+} cache_counters;
 
 #endif  /* _SPL_KSTAT_H */

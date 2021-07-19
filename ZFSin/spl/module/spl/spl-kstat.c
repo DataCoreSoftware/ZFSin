@@ -78,6 +78,7 @@
 
 #include <Trace.h>
 #include <sys/arc.h>
+#include <sys/zil.h>
 /*
 * Global lock to protect the AVL trees and kstat_chain_id.
 */
@@ -1941,16 +1942,17 @@ int spl_kstat_write(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpS
 }
 
 /* Added comments inline referring to perl arcstat.pl */
-void arc_stats_counters_perfmon(arc_stats_counters* perf)
+void cache_counters_perfmon(cache_counters* perf)
 {
+	int rcdone = 0, wcdone = 0;
 	ekstat_t* e;
 	mutex_enter(&kstat_chain_lock);
-	for (e = avl_first(&kstat_avl_bykid); e != NULL; e = avl_walk(&kstat_avl_bykid, e, AVL_AFTER))
+	for (e = avl_first(&kstat_avl_bykid); e != NULL && (!rcdone || !wcdone); e = avl_walk(&kstat_avl_bykid, e, AVL_AFTER))
 	{
 		kstat_t* current = &e->e_ks;
-		arc_stats_t* ptr = current->ks_data;
-		if (ptr && !strcmp(current->ks_module, "zfs") && !strcmp(current->ks_name, "arcstats"))
+		if (current->ks_data && !strcmp(current->ks_module, "zfs") && !strcmp(current->ks_name, "arcstats"))
 		{
+			arc_stats_t* ptr = current->ks_data;
 			//$v{ "hits" } = $d{ "hits" } / $int;
 			perf->arcstat_hits = ptr->arcstat_hits.value.ui64;
 
@@ -2017,6 +2019,9 @@ void arc_stats_counters_perfmon(arc_stats_counters* perf)
 			//$v{"l2write"} = $d{"l2_write_bytes"}/$int;
 			perf->arcstat_l2_write_bytes = ptr->arcstat_l2_write_bytes.value.ui64;
 
+			//$v{l2 access per second} = $v{"l2hits"} + $v{ "l2miss" }
+			perf->arcstat_l2_access_ps = perf->arcstat_l2_hits + perf->arcstat_l2_misses;
+
 			//$v{ "read" } = $v{ "hits" } +$v{ "miss" };
 			perf->arcstat_read_ps = perf->arcstat_hits + perf->arcstat_misses;
 
@@ -2032,7 +2037,25 @@ void arc_stats_counters_perfmon(arc_stats_counters* perf)
 			//$v{"ovrhd"} = $cur{"overhead_size"};
 			perf->arcstat_overhead_size = ptr->arcstat_overhead_size.value.i64;
 
-			break;
+			rcdone = 1;
+		}
+		else if (current->ks_data && !strcmp(current->ks_module, "zfs") && !strcmp(current->ks_name, "zil")) {
+			zil_stats_t* ptr = current->ks_data;
+			perf->zil_commit_count = ptr->zil_commit_count.value.ui64;
+			perf->zil_commit_writer_count = ptr->zil_commit_writer_count.value.ui64;
+			perf->zil_itx_count = ptr->zil_itx_count.value.ui64;
+			perf->zil_itx_indirect_count = ptr->zil_itx_indirect_count.value.ui64;
+			perf->zil_itx_indirect_bytes = ptr->zil_itx_indirect_bytes.value.ui64;
+			perf->zil_itx_copied_count = ptr->zil_itx_copied_count.value.ui64;
+			perf->zil_itx_copied_bytes = ptr->zil_itx_copied_bytes.value.ui64;
+			perf->zil_itx_needcopy_count = ptr->zil_itx_needcopy_count.value.ui64;
+			perf->zil_itx_needcopy_bytes = ptr->zil_itx_needcopy_bytes.value.ui64;
+			perf->zil_itx_metaslab_normal_count = ptr->zil_itx_metaslab_normal_count.value.ui64;
+			perf->zil_itx_metaslab_normal_bytes = ptr->zil_itx_metaslab_normal_bytes.value.ui64;
+			perf->zil_itx_metaslab_slog_count = ptr->zil_itx_metaslab_slog_count.value.ui64;
+			perf->zil_itx_metaslab_slog_bytes = ptr->zil_itx_metaslab_slog_bytes.value.ui64;
+
+			wcdone = 1;
 		}
 	}
 	mutex_exit(&kstat_chain_lock);
