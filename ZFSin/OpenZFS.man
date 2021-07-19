@@ -22,7 +22,7 @@
 				<counterSet
 					guid        = "{d060e0bd-0050-4486-93e1-e7979ebfeb2b}"
 					uri         = "ZFSin.IOPS.THROUGHPUT"
-					name        = "OpenZFS zpool"
+					name        = "OpenZFS Zpool"
 					description = "Collect IOPS, read and written bytes of a zpool"
 					symbol      = "ZFSinPerf"
 					instances   = "multiple"
@@ -377,7 +377,7 @@
 				<counterSet
 					guid        = "{ECA921B0-F6A9-4710-A3A8-DE6FFCFF33A0}"
 					uri         = "ZFSin.IOPS.THROUGHPUT.PER.VDEV"
-					name        = "OpenZFS vdev"
+					name        = "OpenZFS Vdev"
 					description = "Collect per vdev stats in each zpool"
 					symbol      = "ZFSinPerfVdev"
 					instances   = "multiple"
@@ -691,16 +691,16 @@
 				</counterSet>
 				<counterSet
 					guid        = "{EA59B337-CF84-442B-9705-1E4F1B5800B1}"
-					uri         = "ZFSin.ARC.L2ARC"
-					name        = "OpenZFS ARC-L2ARC"
-					description = "Collect ARC and L2ARC statistics"
-					symbol      = "ZFSinArcPerf"
+					uri         = "ZFSin.ARC.L2ARC.ZIL.SLOG"
+					name        = "OpenZFS Cache"
+					description = "Collect ARC L2ARC ZIL SLOG statistics"
+					symbol      = "ZFSinCachePerf"
 					instances   = "multiple"
 				>
 					<structs>
 						<struct
-							name="ZFSinArcPerfValues"
-							type="arc_stats_counters"
+							name="ZFSinCachePerfValues"
+							type="cache_counters"
 						/>
 					</structs>
 					<counter
@@ -746,7 +746,7 @@
 					<counter
 						id           = "5"
 						uri          = "ZFSin.arcstat_mfu_hits"
-						name         = "MFU List Hits"
+						name         = "ARC MFU List Hits"
 						struct       = "arcstat_mfu_hits"
 						field        = "arcstat_mfu_hits"
 						description  = "MFU List hits per second"
@@ -756,7 +756,7 @@
 					<counter
 						id           = "6"
 						uri          = "ZFSin.arcstat_mru_hits"
-						name         = "MRU List Hits"
+						name         = "ARC MRU List Hits"
 						struct       = "arcstat_mru_hits"
 						field        = "arcstat_mru_hits"
 						description  = "MRU List hits per second"
@@ -766,7 +766,7 @@
 					<counter
 						id           = "7"
 						uri          = "ZFSin.arcstat_mru_ghost_hits"
-						name         = "MRU Ghost List Hits"
+						name         = "ARC MRU Ghost List Hits"
 						struct       = "arcstat_mru_ghost_hits"
 						field        = "arcstat_mru_ghost_hits"
 						description  = "MRU Ghost List hits per second"
@@ -776,7 +776,7 @@
 					<counter
 						id           = "8"
 						uri          = "ZFSin.arcstat_mfu_ghost_hits"
-						name         = "MFU Ghost List Hits"
+						name         = "ARC MFU Ghost List Hits"
 						struct       = "arcstat_mfu_ghost_hits"
 						field        = "arcstat_mfu_ghost_hits"
 						description  = "MFU Ghost List hits per second"
@@ -786,7 +786,7 @@
 					<counter
 						id           = "9"
 						uri          = "ZFSin.arcstat_evict_skip"
-						name         = "Evict Skip"
+						name         = "ARC Evict Skip"
 						struct       = "arcstat_evict_skip"
 						field        = "arcstat_evict_skip"
 						description  = "evict_skip per second"
@@ -796,7 +796,7 @@
 					<counter
 						id           = "10"
 						uri          = "ZFSin.arcstat_mutex_miss"
-						name         = "Mutex Misses"
+						name         = "ARC Mutex Misses"
 						struct       = "arcstat_mutex_miss"
 						field        = "arcstat_mutex_miss"
 						description  = "mutex_miss per second"
@@ -806,7 +806,7 @@
 					<counter
 						id           = "11"
 						uri          = "ZFSin.arcstat_compressed_size"
-						name         = "Compressed Size Bytes"
+						name         = "ARC Compressed Size Bytes"
 						struct       = "arcstat_compressed_size"
 						field        = "arcstat_compressed_size"
 						description  = "bytes of cache consumed by compressed blocks"
@@ -816,7 +816,7 @@
 					<counter
 						id           = "12"
 						uri          = "ZFSin.arcstat_uncompressed_size"
-						name         = "Uncompressed Size Bytes"
+						name         = "ARC Uncompressed Size Bytes"
 						struct       = "arcstat_uncompressed_size"
 						field        = "arcstat_uncompressed_size"
 						description  = "bytes required to cache compress if the same data decompressed"
@@ -826,7 +826,7 @@
 					<counter
 						id           = "13"
 						uri          = "ZFSin.arcstat_overhead_size"
-						name         = "Overhead Size Bytes"
+						name         = "ARC Overhead Size Bytes"
 						struct       = "arcstat_overhead_size"
 						field        = "arcstat_overhead_size"
 						description  = "amount of uncompressed data cache is currently using"
@@ -876,7 +876,7 @@
 					<counter
 						id           = "18"
 						uri          = "ZFSin.arcstat_total_demand_hits"
-						name         = "Demand Data Hits"
+						name         = "ARC Demand Data Hits"
 						struct       = "arcstat_total_demand_hits"
 						field        = "arcstat_total_demand_hits"
 						description  = "Demand Data hits per second + metadata hits per second"
@@ -886,7 +886,7 @@
 					<counter
 						id           = "19"
 						uri          = "ZFSin.arcstat_total_demand_miss"
-						name         = "Demand Data Misses"
+						name         = "ARC Demand Data Misses"
 						struct       = "arcstat_total_demand_miss"
 						field        = "arcstat_total_demand_miss"
 						description  = "Demand Data misses per second + metadata misses per second"
@@ -896,7 +896,7 @@
 					<counter
 						id           = "20"
 						uri          = "ZFSin.arcstat_perfetch_hits"
-						name         = "Prefetch Hits"
+						name         = "ARC Prefetch Hits"
 						struct       = "arcstat_perfetch_hits"
 						field        = "arcstat_perfetch_hits"
 						description  = "Prefetch hits per second"
@@ -906,7 +906,7 @@
 					<counter
 						id           = "21"
 						uri          = "ZFSin.arcstat_perfetch_miss"
-						name         = "Prefetch Misses"
+						name         = "ARC Prefetch Misses"
 						struct       = "arcstat_perfetch_miss"
 						field        = "arcstat_perfetch_miss"
 						description  = "Prefetch misses per second"
@@ -916,7 +916,7 @@
 					<counter
 						id           = "22"
 						uri          = "ZFSin.arcstat_perfetch_ps"
-						name         = "Total Prefetch 'Hits + Misses'"
+						name         = "ARC Total Prefetch Hits Misses"
 						struct       = "arcstat_perfetch_ps"
 						field        = "arcstat_perfetch_ps"
 						description  = "Prefetch accesses per second"
@@ -926,7 +926,7 @@
 					<counter
 						id           = "23"
 						uri          = "ZFSin.arcstat_read_ps"
-						name         = "Total ARC 'Hits + Misses'"
+						name         = "ARC Total Hits Misses"
 						struct       = "arcstat_read_ps"
 						field        = "arcstat_read_ps"
 						description  = "Total ARC accesses per second"
@@ -936,7 +936,7 @@
 					<counter
 						id           = "24"
 						uri          = "ZFSin.arcstat_metadata_hit_ps"
-						name         = "metadata Hits"
+						name         = "ARC Metadata Hits"
 						struct       = "arcstat_metadata_hit_ps"
 						field        = "arcstat_metadata_hit_ps"
 						description  = "metadata hits per second"
@@ -946,7 +946,7 @@
 					<counter
 						id           = "25"
 						uri          = "ZFSin.arcstat_metadata_miss_ps"
-						name         = "metadata Misses"
+						name         = "ARC Metadata Misses"
 						struct       = "arcstat_metadata_miss_ps"
 						field        = "arcstat_metadata_miss_ps"
 						description  = "metadata misses per second"
@@ -956,7 +956,7 @@
 					<counter
 						id           = "26"
 						uri          = "ZFSin.arcstat_metadata_accesses_ps"
-						name         = "Total metadata 'Hits + Misses'"
+						name         = "ARC Total Metadata Hits Misses"
 						struct       = "arcstat_metadata_accesses_ps"
 						field        = "arcstat_metadata_accesses_ps"
 						description  = "metadata accesses per second"
@@ -966,7 +966,7 @@
 					<counter
 						id           = "27"
 						uri          = "ZFSin.arcstat_demand_ps"
-						name         = "Total Demand Data 'Hits + Misses'"
+						name         = "ARC Total Demand Data Hits Misses"
 						struct       = "arcstat_demand_ps"
 						field        = "arcstat_demand_ps"
 						description  = "Demand data accesses per second"
@@ -976,10 +976,140 @@
 					<counter
 						id           = "28"
 						uri          = "ZFSin.arcstat_l2_access_ps"
-						name         = "Total L2ARC 'Hits + Misses'"
+						name         = "L2ARC Total Hits Misses"
 						struct       = "arcstat_l2_access_ps"
 						field        = "arcstat_l2_access_ps"
 						description  = "Total L2ARC Hits + Miss"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "29"
+						uri          = "ZFSin.zil_commit_count"
+						name         = "ZIL Commit Count"
+						struct       = "zil_commit_count"
+						field        = "zil_commit_count"
+						description  = "zil_commit_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "30"
+						uri          = "ZFSin.zil_commit_writer_count"
+						name         = "ZIL Commit Writer Count"
+						struct       = "zil_commit_writer_count"
+						field        = "zil_commit_writer_count"
+						description  = "zil_commit_writer_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "31"
+						uri          = "ZFSin.zil_itx_count"
+						name         = "ZIL Count"
+						struct       = "zil_itx_count"
+						field        = "zil_itx_count"
+						description  = "zil_itx_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "32"
+						uri          = "ZFSin.zil_itx_indirect_count"
+						name         = "ZIL Indirect Count"
+						struct       = "zil_itx_indirect_count"
+						field        = "zil_itx_indirect_count"
+						description  = "zil_itx_indirect_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "33"
+						uri          = "ZFSin.zil_itx_indirect_bytes"
+						name         = "ZIL Indirect Bytes"
+						struct       = "zil_itx_indirect_bytes"
+						field        = "zil_itx_indirect_bytes"
+						description  = "zil_itx_indirect_bytes"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "34"
+						uri          = "ZFSin.zil_itx_copied_count"
+						name         = "ZIL Copied Count"
+						struct       = "zil_itx_copied_count"
+						field        = "zil_itx_copied_count"
+						description  = "zil_itx_copied_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "35"
+						uri          = "ZFSin.zil_itx_copied_bytes"
+						name         = "ZIL Copied Bytes"
+						struct       = "zil_itx_copied_bytes"
+						field        = "zil_itx_copied_bytes"
+						description  = "zil_itx_copied_bytes"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "36"
+						uri          = "ZFSin.zil_itx_needcopy_count"
+						name         = "ZIL Needcopy Count"
+						struct       = "zil_itx_needcopy_count"
+						field        = "zil_itx_needcopy_count"
+						description  = "zil_itx_needcopy_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "37"
+						uri          = "ZFSin.zil_itx_needcopy_bytes"
+						name         = "ZIL Needcopy Bytes"
+						struct       = "zil_itx_needcopy_bytes"
+						field        = "zil_itx_needcopy_bytes"
+						description  = "zil_itx_needcopy_bytes"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "38"
+						uri          = "ZFSin.zil_itx_metaslab_normal_count"
+						name         = "ZIL Metaslab Normal Count"
+						struct       = "zil_itx_metaslab_normal_count"
+						field        = "zil_itx_metaslab_normal_count"
+						description  = "zil_itx_metaslab_normal_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "39"
+						uri          = "ZFSin.zil_itx_metaslab_normal_bytes"
+						name         = "ZIL Metaslab Normal Bytes"
+						struct       = "zil_itx_metaslab_normal_bytes"
+						field        = "zil_itx_metaslab_normal_bytes"
+						description  = "zil_itx_metaslab_normal_bytes"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "40"
+						uri          = "ZFSin.zil_itx_metaslab_slog_count"
+						name         = "SLOG Metaslab Count"
+						struct       = "zil_itx_metaslab_slog_count"
+						field        = "zil_itx_metaslab_slog_count"
+						description  = "zil_itx_metaslab_slog_count"
+						type         = "perf_counter_bulk_count"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "41"
+						uri          = "ZFSin.zil_itx_metaslab_slog_bytes"
+						name         = "SLOG Metaslab Bytes"
+						struct       = "zil_itx_metaslab_slog_bytes"
+						field        = "zil_itx_metaslab_slog_bytes"
+						description  = "zil_itx_metaslab_slog_bytes"
 						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>

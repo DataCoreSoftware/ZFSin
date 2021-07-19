@@ -475,19 +475,19 @@ ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID 
 }
 
 NTSTATUS NTAPI
-ZFSinArcPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
+ZFSinCachePerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
 	UNREFERENCED_PARAMETER(Context);
 
 	switch (Type) {
 	case PcwCallbackEnumerateInstances:
 	{
-		ZFSinArcPerfEnumerate(Info->EnumerateInstances);
+		ZFSinCachePerfEnumerate(Info->EnumerateInstances);
 
 		break;
 	}
 	case PcwCallbackCollectData:
 	{
-		ZFSinArcPerfCollect(Info->CollectData);
+		ZFSinCachePerfCollect(Info->CollectData);
 
 		break;
 	}
@@ -586,7 +586,7 @@ void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
-void ZFSinArcPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
+void ZFSinCachePerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 	UNICODE_STRING unicodeName;
 	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
@@ -599,9 +599,9 @@ void ZFSinArcPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 		TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",__func__, __LINE__, &ansi_spa);
 	}
 	else {
-		status = AddZFSinArcPerf(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
+		status = AddZFSinCachePerf(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
 		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinArcPerf failed - status 0x%x\n", __func__, __LINE__, status);
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinCachePerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
@@ -779,7 +779,7 @@ update_total_perf(zpool_perf_counters* perf, zpool_perf_counters* total_perf) {
 	total_perf->dp_dirty_total_io += perf->dp_dirty_total_io;
 }
 
-extern void arc_stats_counters_perfmon(arc_stats_counters* perf_arc);
+extern void cache_counters_perfmon(cache_counters* perf_cache);
 void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	NTSTATUS status = STATUS_SUCCESS;
 	UNICODE_STRING unicodeName;
@@ -835,7 +835,7 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
 
-void ZFSinArcPerfCollect(PCW_MASK_INFORMATION CollectData) {
+void ZFSinCachePerfCollect(PCW_MASK_INFORMATION CollectData) {
 	UNICODE_STRING unicodeName;
 	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
 	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
@@ -848,12 +848,12 @@ void ZFSinArcPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",__func__, __LINE__, &ansi_spa);
 	}
 	else {
-		arc_stats_counters perf_arc = { 0 };
-		arc_stats_counters_perfmon(&perf_arc);
+		cache_counters perf_cache = { 0 };
+		cache_counters_perfmon(&perf_cache);
 
-		status = AddZFSinArcPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf_arc);
+		status = AddZFSinCachePerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf_cache);
 		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinArcPerf failed - status 0x%x\n", __func__, __LINE__, status);
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinCachePerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
@@ -8642,9 +8642,9 @@ zfs_attach(void)
 		TraceEvent(TRACE_ERROR, "ZFSin vdev perf registration failed\n");
 	}
 
-	pcwStatus = RegisterZFSinArcPerf(ZFSinArcPerfCallBack, NULL);
+	pcwStatus = RegisterZFSinCachePerf(ZFSinCachePerfCallBack, NULL);
 	if (!NT_SUCCESS(pcwStatus)) {
-		TraceEvent(TRACE_ERROR, "ZFSin ARC perf registration failed\n");
+		TraceEvent(TRACE_ERROR, "ZFSin cache perf registration failed\n");
 	}
 
 #if 0
@@ -8757,7 +8757,7 @@ zfs_detach(void)
 
 	UnregisterZFSinPerfVdev();
 	UnregisterZFSinPerf();
-	UnregisterZFSinArcPerf();
+	UnregisterZFSinCachePerf();
 
 
 #ifdef linux
