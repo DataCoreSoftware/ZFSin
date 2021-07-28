@@ -1260,7 +1260,6 @@ zil_lwb_write_done(zio_t *zio)
 		for (zcw = list_head(&lwb->lwb_waiters); zcw != NULL;
 				zcw = list_next(&lwb->lwb_waiters, zcw)) {
 			mutex_enter(&zcw->zcw_lock);
-			ASSERT(list_link_active(&zcw->zcw_node));
 			ASSERT3P(zcw->zcw_lwb, ==, lwb);
 			zcw->zcw_zio_error = zio->io_error;
 			mutex_exit(&zcw->zcw_lock);
