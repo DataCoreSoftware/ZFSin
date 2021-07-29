@@ -654,6 +654,8 @@ zvol_create_minor_impl(const char *name)
 	// Assign new TargetId and Lun
 	wzvol_assign_targetid(zv);
 
+	dprintf("%s:%d Assigned targetid for zvol:%s\n",
+		__func__, __LINE__, zv->zv_name);
 
 	/* get and cache the blocksize */
 	error = dmu_object_info(os, ZVOL_OBJ, &doi);
@@ -708,6 +710,9 @@ zvol_create_minor_impl(const char *name)
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
 	if (error == 0)
 		zv->zv_minor = minor; // zvol good to go and fully opened.
+
+	dprintf("%s:%d before returning zvol '%s',targetid=%d,lun_id=%d,zv_minor=%d,total_opens=%d,vol size=%llu,flags=%d\n",
+		__func__, __LINE__, zv->zv_name, zv->zv_target_id, zv->zv_lun_id, zv->zv_minor, zv->zv_total_opens, zv->zv_volsize, zv->zv_flags);
 
 	return (0);
 }
