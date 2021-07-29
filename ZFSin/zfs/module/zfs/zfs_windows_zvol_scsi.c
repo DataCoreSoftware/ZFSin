@@ -625,7 +625,9 @@ ScsiOpReadCapacity16(
 	blockSize = MP_BLOCK_SIZE;
 	maxBlocks = (zv->zv_volsize / blockSize) - 1;
 
-	dprintf("%s:%d Block Size: 0x%x Total Blocks: 0x%llx targetid:%d lun:%d,volname:%s,zv_volsize=%llu\n", __func__, __LINE__, blockSize, maxBlocks, pSrb->TargetId, pSrb->Lun, zv->zv_name, zv->zv_volsize);
+	dprintf("%s:%d Block Size: 0x%x Total Blocks: 0x%llx targetid:%d lun:%d, volname:%s, zv_volsize=%llu\n",
+		__func__, __LINE__, blockSize, maxBlocks, pSrb->TargetId, pSrb->Lun, zv->zv_name, zv->zv_volsize);
+
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
 	REVERSE_BYTES_QUAD(&readCapacity->LogicalBlockAddress.QuadPart, &maxBlocks);
 	lppFactor = zv->zv_volblocksize / MP_BLOCK_SIZE;
@@ -838,7 +840,10 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	TraceEvent(8,"%s:%d: MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", __func__, __LINE__, pSrb, pSrb->DataBuffer);
 	
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
-		dprintf("%s:%d invalid starting sector: %d for zvol:%s,volsize=%llu,minor=%d,target_id=%d,lun_id=%d\n", __func__, __LINE__, startingSector, zv->zv_name, zv->zv_volsize, zv->zv_minor, zv->zv_target_id, zv->zv_lun_id);
+		dprintf("%s:%d invalid starting sector: %d for zvol:%s, volsize=%llu, minor=%d, target_id=%d, lun_id=%d\n",
+			__func__, __LINE__, startingSector, zv->zv_name, zv->zv_volsize, zv->zv_minor,
+			zv->zv_target_id, zv->zv_lun_id);
+		
 		status = SRB_STATUS_INVALID_REQUEST;
 		goto Done;
 	}

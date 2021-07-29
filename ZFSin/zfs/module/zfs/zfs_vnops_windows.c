@@ -4952,7 +4952,9 @@ NTSTATUS pnp_query_di(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 			zv = zvol_name2minor(&vendorUniqueId[8], &minorNum);
 			if (zv) {
 				zvol_state_t* pzvDebug = (zvol_state_t*)zv;
-				TraceEvent(TRACE_INFO, "%s:%d: querying DI interface for zvol:%s,zvol size=%llu,lun_id=%d,zv_target_id=%d,zv_minor=%d,zv_total_opens=%d\n", __func__, __LINE__, pzvDebug->zv_name, pzvDebug->zv_volsize, pzvDebug->zv_lun_id, pzvDebug->zv_target_id, pzvDebug->zv_minor, pzvDebug->zv_total_opens);
+				TraceEvent(TRACE_INFO, "%s:%d: querying DI interface for zvol:%s, zvol size=%llu, lun_id=%d, zv_target_id=%d, zv_minor=%d, zv_total_opens=%d\n",
+					__func__, __LINE__, pzvDebug->zv_name, pzvDebug->zv_volsize, pzvDebug->zv_lun_id,
+					pzvDebug->zv_target_id, pzvDebug->zv_minor, pzvDebug->zv_total_opens);
 			}
 
 			// check that the minor number is non-zero: that signifies the zvol has fully completed its bringup phase.
