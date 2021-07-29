@@ -503,10 +503,14 @@
       <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c">
-      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
-      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
-      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
-      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</WppEnabled>
+      <WppTraceFunction Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TraceEvent{FLAGS=MYDRIVER_ALL_INFO}(LEVEL, MSG, ...);</WppTraceFunction>
+      <WppTraceFunction Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TraceEvent{FLAGS=MYDRIVER_ALL_INFO}(LEVEL, MSG, ...);</WppTraceFunction>
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c">
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
