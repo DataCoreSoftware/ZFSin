@@ -651,12 +651,6 @@ zvol_create_minor_impl(const char *name)
 	    offsetof(zvol_extent_t, ze_node));
 	rangelock_init(&zv->zv_rangelock, NULL, NULL);
 
-	// Assign new TargetId and Lun
-	wzvol_assign_targetid(zv);
-
-	dprintf("%s:%d Assigned targetid for zvol:%s\n",
-		__func__, __LINE__, zv->zv_name);
-
 	/* get and cache the blocksize */
 	error = dmu_object_info(os, ZVOL_OBJ, &doi);
 	ASSERT(error == 0);
@@ -708,8 +702,11 @@ zvol_create_minor_impl(const char *name)
 
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
-	if (error == 0)
+	if (error == 0) {
 		zv->zv_minor = minor; // zvol good to go and fully opened.
+		// Assign new TargetId and Lun
+		wzvol_assign_targetid(zv);
+	}
 
 	dprintf("%s:%d before returning zvol '%s',targetid=%d, lun_id=%d, zv_minor=%d, total_opens=%d, vol size=%llu, flags=%d\n",
 		__func__, __LINE__, zv->zv_name, zv->zv_target_id, zv->zv_lun_id, zv->zv_minor,
