@@ -386,7 +386,6 @@ static boolean_t arc_warm;
  * These tunables are for performance analysis.
  */
 extern uint64_t total_memory;
-extern uint64_t total_physical_memory;
 extern uint64_t real_total_memory;
 uint64_t zfs_arc_max;
 uint64_t zfs_arc_min;
@@ -7196,16 +7195,15 @@ arc_kstat_update_cont(kstat_t *ksp, int rw)
 		zfs_arc_average_blocksize = ks->arc_zfs_arc_average_blocksize.value.ui64;
 #ifdef _KERNEL
 		if (ks->zfs_total_memory_limit.value.ui64 > total_memory &&
-				ks->zfs_total_memory_limit.value.ui64 < total_physical_memory) {
+				ks->zfs_total_memory_limit.value.ui64 < real_total_memory) {
 			dprintf("%s Changing total memory limit to: %llu from: %llu. total physical memory: %llu\n", 
-					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, total_physical_memory);
+					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, real_total_memory);
 			total_memory = ks->zfs_total_memory_limit.value.ui64;
-			real_total_memory = total_memory;
 			physmem = total_memory / PAGE_SIZE;
 			spl_minimal_physmem_p_logic();
 		} else {
 			dprintf("%s Skip changing total memory limit to: %llu from: %llu. total physical memory: %llu\n", 
-					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, total_physical_memory);
+					__func__, ks->zfs_total_memory_limit.value.ui64, total_memory, real_total_memory);
 		}
 #endif
 
