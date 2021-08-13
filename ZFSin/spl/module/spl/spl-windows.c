@@ -52,7 +52,6 @@ struct utsname utsname = { { 0 } };
 unsigned int max_ncpus = 0;
 uint64_t  total_memory = 0;
 uint64_t  real_total_memory = 0;
-uint64_t  total_physical_memory = 0;
 
 volatile unsigned int vm_page_free_wanted = 0;
 volatile unsigned int vm_page_free_min = 512;
@@ -456,30 +455,27 @@ int spl_start(PUNICODE_STRING RegistryPath)
 	//max_ncpus = processor_avail_count;
 	int ncpus;
 	size_t len = sizeof(ncpus);
+	uint64_t  zfs_total_memory_limit = 0;
 
 	dprintf("SPL: start\n");
 	max_ncpus = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
 	if (!max_ncpus) max_ncpus = 1;
 	dprintf("SPL: total ncpu %d\n", max_ncpus);
 
-	total_physical_memory = spl_GetPhysMem();
+	real_total_memory = spl_GetPhysMem();
 
-	if (total_physical_memory) {
-		real_total_memory = spl_GetZfsTotalMemory(RegistryPath);
-		if (real_total_memory && (real_total_memory > ZFS_MIN_MEMORY_LIMIT)
-			&& (real_total_memory < total_physical_memory)) {
-			total_memory = real_total_memory;
-		}
-		else {
-			real_total_memory = total_physical_memory;
-			total_memory = total_physical_memory * 50ULL / 100ULL;
-		}
+	if (real_total_memory) {
+		zfs_total_memory_limit = spl_GetZfsTotalMemory(RegistryPath);
+		if (zfs_total_memory_limit > ZFS_MIN_MEMORY_LIMIT && zfs_total_memory_limit < real_total_memory)
+			total_memory = zfs_total_memory_limit;
+		else
+			total_memory = real_total_memory * 50ULL / 100ULL;
 	}
 	else {
-		real_total_memory = total_physical_memory = ZFS_MIN_MEMORY_LIMIT;
-		total_memory = total_physical_memory * 50ULL / 100ULL;
+		real_total_memory = ZFS_MIN_MEMORY_LIMIT;
+		total_memory = real_total_memory * 50ULL / 100ULL;
 	}
-
+	dprintf("%s real_total_memory: %llu zfs_total_memory_limit: %llu total_memory: %llu\n", __func__, real_total_memory, zfs_total_memory_limit, total_memory);
 	physmem = total_memory / PAGE_SIZE;
 
 	// We need to set these to some non-zero values
@@ -678,7 +674,7 @@ uint64_t spl_GetZfsTotalMemory(PUNICODE_STRING RegistryPath)
 		if ((status != STATUS_BUFFER_TOO_SMALL) && (status != STATUS_BUFFER_OVERFLOW))
 			break; // Something is wrong - or we finished
 
-        // Allocate space to hold
+	        // Allocate space to hold
 		regBuffer = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(NonPagedPoolNx, length, 'zfsr');
 
 		if (regBuffer == NULL)
