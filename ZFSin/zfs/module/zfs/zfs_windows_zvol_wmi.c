@@ -776,6 +776,21 @@ ExecuteWmiMethod(
 
             switch(MethodId) {
 
+                case GetDiscoveredPortAttributes: {
+                    PGetDiscoveredPortAttributes_OUT pGetDiscoveredPortAttributes = (PGetDiscoveredPortAttributes_OUT)pBuffer;
+                    sizeNeeded = GetDiscoveredPortAttributes_OUT_SIZE;
+
+                    if (OutBufferSize >= sizeNeeded) {
+                        memset(pGetDiscoveredPortAttributes, 0, sizeNeeded);
+                        pGetDiscoveredPortAttributes->HBAStatus = HBA_STATUS_ERROR_ILLEGAL_INDEX;
+                    }
+                    else {
+                        status = SRB_STATUS_DATA_OVERRUN;
+                    }
+
+                    break;
+                }
+
                 case RefreshInformation: {
 
                     // Do nothing.
