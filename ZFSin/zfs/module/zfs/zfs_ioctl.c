@@ -558,6 +558,9 @@ void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 
 		for (int c = 0; c < vd->vdev_children; c++) {
 			char* vdev_name = vd->vdev_child[c]->vdev_path;
+			if (!vdev_name || !vdev_name[0])
+				continue;
+
 			snprintf(vdev_zpool, ZFS_MAX_DATASET_NAME_LEN, "%s_%s", vdev_name + 5, spa_perf->spa_name);  /* Neglecting first five characters of vdev_name */
 
 			ANSI_STRING ansi_vdev;
@@ -880,6 +883,9 @@ void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
 
 		for (int c = 0; c < vd->vdev_children; c++) {
 			char* vdev_name = vd->vdev_child[c]->vdev_path;
+			if (!vdev_name || !vdev_name[0])
+				continue;
+
 			snprintf(vdev_zpool, ZFS_MAX_DATASET_NAME_LEN, "%s_%s", vdev_name + 5, spa_perf->spa_name);		/* Neglecting first five characters of vdev_name */
 
 			ANSI_STRING ansi_vdev;
