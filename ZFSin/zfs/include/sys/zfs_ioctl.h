@@ -736,8 +736,6 @@ extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
 extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
 extern void latency_stats(uint64_t* histo, unsigned int buckets, stat_pair* lat);
-extern void vdev_get_child_stat(vdev_t* cvd, vdev_stat_t* vs, vdev_stat_t* cvs);
-extern void vdev_get_child_stat_ex(vdev_t* cvd, vdev_stat_ex_t* vsx, vdev_stat_ex_t* cvsx);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,

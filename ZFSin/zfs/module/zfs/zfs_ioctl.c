@@ -876,8 +876,6 @@ void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
 	while ((spa_perf = spa_next(spa_perf)) != NULL) {
 		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
 		vdev_t* vd = spa_perf->spa_root_vdev;
-		vdev_stat_t vs = { 0 };
-		vdev_stat_ex_t cvsx = { 0 };
 		char vdev_zpool[ZFS_MAX_DATASET_NAME_LEN] = { 0 };
 		zpool_perf_counters perf_vdev = { 0 };
 
@@ -893,15 +891,8 @@ void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData) {
 			status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_vdev, FALSE);
 
 			vdev_t* cvd = vd->vdev_child[c];
-			vdev_stat_t* cvs = &cvd->vdev_stat;
-			vdev_stat_ex_t* cvsxy = &cvd->vdev_stat_ex;
-
-			vdev_get_child_stat_ex(cvd, &cvsx, cvsxy);
-			vdev_get_child_stat(cvd, &vs, cvs);
-
-			update_perf(&cvsx, &vs, NULL, NULL, &perf_vdev);
+			update_perf(&cvd->vdev_stat_ex, &cvd->vdev_stat, NULL, NULL, &perf_vdev);
 			update_total_perf(&perf_vdev, &total_perf_vdev);
-
 			status = AddZFSinPerfVdev(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf_vdev);
 
 			if (!NT_SUCCESS(status)) {
