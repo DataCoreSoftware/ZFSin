@@ -100,14 +100,26 @@ def iter_files(path, recursive=False):
     is_flag=True,
     default=False,
 )
+
+@click.option(
+    "--nosampling",
+    help="To disable sampling",
+    is_flag=True,
+    default=False,
+)
+
 def scan(paths, recursive, size, hash_function, outpath, max_threads, raw):
     """
     Scan and report duplication.
     """
     click.echo("DCS Deduplication Estimation Tool\n")
     
-    m = 1000    # 1 in m chunks are included in the sample
-    x = random.randint(0, m - 1)    # random integer between 0 and m.
+   if nosampling:
+        m = 1
+        x = 0
+    else:
+        m = 1000    # 1 in m chunks are included in the sample
+        x = random.randint(0, m - 1)    # random integer between 0 and m.
 
     '''
     m and x together act as a filter and decide whether a chunk will be stored in the sample
