@@ -108,7 +108,7 @@ def iter_files(path, recursive=False):
     default=False,
 )
 
-def scan(paths, recursive, size, hash_function, outpath, max_threads, raw):
+def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosampling):
     """
     Scan and report duplication.
     """
