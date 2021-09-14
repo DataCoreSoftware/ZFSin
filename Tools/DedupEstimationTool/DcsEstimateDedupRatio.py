@@ -18,7 +18,6 @@ from fastcdc.utils import DefaultHelp, supported_hashes
 
 
 def iter_files(path, recursive=False):
-    # global files_skipped
     if recursive:
         for root, subdirs, files in os.walk(path):
             for name in files:
@@ -43,6 +42,7 @@ def iter_files(path, recursive=False):
 @click.argument(
     "paths",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=False, resolve_path=True), nargs=-1,
+    required = True
 )
 
 @click.option(
@@ -86,14 +86,6 @@ def iter_files(path, recursive=False):
     show_default=True
 )
 
-#@click.option(
-#    "-dt",
-#    "--disk-type",
-#    help="ld: logical disk, pd: physical disk. Applicable if you want to scan raw disk",
-#    type=click.Choice(['ld', 'pd'], case_sensitive=False)
-#)
-
-
 @click.option(
     "-raw",
     help="To scan raw disk",
@@ -107,19 +99,18 @@ def iter_files(path, recursive=False):
     is_flag=True,
     default=False,
 )
-
 def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosampling):
     """
     Scan and report duplication.
     """
     click.echo("DCS Deduplication Estimation Tool\n")
+
     if nosampling:
         m = 1
         x = 0
     else:
-        m = 1000 # 1 in m chunks are included in the sample
-        x = random.randint(0,m-1)  # random integer between 0 and m
-        
+        m = 1000    # 1 in m chunks are included in the sample
+        x = random.randint(0, m - 1)    # random integer between 0 and m.
 
     '''
     m and x together act as a filter and decide whether a chunk will be stored in the sample
@@ -132,7 +123,6 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
     bytes_total = 0
 
 
-    # if disk_type:
     if raw:
         '''
         For reading raw physical/logical disks
@@ -146,16 +136,16 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             try:
                 fd = os.open(path, os.O_RDONLY)
                 dsize = os.lseek(fd, 0, os.SEEK_END)
+                sizes.append(dsize)
                 bytes_total += dsize
             except:
                 import wmi
-                # if disk_type == 'pd':
                 for d in wmi.WMI().Win32_DiskDrive():
                         if d.DeviceID == path:
                             dsize = int(d.size)
                             sizes.append(dsize)
                             bytes_total += dsize
-                # if disk_type == 'ld':
+                            
                 for d in wmi.WMI().Win32_LogicalDisk():
                         if d.name == path[4:]:
                             dsize = int(d.size)
@@ -182,14 +172,13 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
 
         t.stop()
         
-        #global fingerprints
         bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
         
         if bytes_total:
             if bytes_unique:
                 results = {}
                 results['paths'] = list(paths)
-                time_taken = int(Timer.timers.mean("scan"))
+                time_taken = int(Timer.timers.mean("scan")) + 0.1
                 data_per_s = bytes_total / time_taken
                 click.echo("Unique Chunks:\t{}".format(intcomma(len(config.fingerprints))))
                 results["unique_chunks"] = intcomma(len(config.fingerprints))
@@ -208,7 +197,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 with open(os.path.join(outpath,output), "w") as outfile:
                     outfile.write(json.dumps(results, indent = 2))
             else:
-                print("Very less unique data / High Duplication. Or try running the tool as administrator")
+                print("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator")
         else:
             click.echo("No data.\n")
 
@@ -240,14 +229,13 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
 
         t.stop()
         
-        #global fingerprints
         bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
         
         if bytes_total:
             if bytes_unique:
                 results = {}
                 results['paths'] = list(paths)
-                time_taken = int(Timer.timers.mean("scan"))
+                time_taken = int(Timer.timers.mean("scan")) + 0.1
                 data_per_s = bytes_total / time_taken
                 results["files"] = intcomma(file_count)
                 click.echo("Unique Chunks:\t{}".format(intcomma(len(config.fingerprints))))
@@ -269,7 +257,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 with open(os.path.join(outpath,output), "w") as outfile:
                     outfile.write(json.dumps(results, indent = 2))
             else:
-                print("Very less unique data / High Duplication. Or try running the tool as administrator")
+                print("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator")
         else:
             click.echo("No data.\n")
 
