@@ -37,11 +37,11 @@ def iter_files(path, recursive=False):
                 except:
                     config.files_skipped += 1
 
-
-@click.command(cls=DefaultHelp)
+@click.command(cls=DefaultHelp, epilog="The tool performs a full scan of the dataset with or without --nosampling flag unless --sample-size is specified.")
 @click.argument(
     "paths",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=False, resolve_path=True), nargs=-1,
+    type=click.Path(exists=True, file_okay=True, dir_okay=True, readable=False, resolve_path=True), nargs=-1,
+    #type=click.Path(exists=True, readable=False, resolve_path=True), nargs=-1,
     required = True
 )
 
@@ -95,15 +95,34 @@ def iter_files(path, recursive=False):
 
 @click.option(
     "--nosampling",
-    help="To disable sampling",
+    help="Use this option to get more accurate results. But it uses more memory",
+    is_flag=True,
+    default=False
+)
+
+@click.option(
+    "--sample-size",
+    help="Size of the sample to be scanned (in GB)",
+    default=-1
+)
+
+@click.option(
+    "--isconfig",
+    help="Given path is a path to config file",
     is_flag=True,
     default=False,
+    show_default=True
 )
-def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosampling):
+
+def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosampling, sample_size, isconfig):
     """
     Scan and report duplication.
     """
     click.echo("DCS Deduplication Estimation Tool\n")
+    
+    if isconfig:
+        config_file = open(paths[0])
+        paths = config_file.read().split('\n')
 
     if nosampling:
         m = 1
@@ -115,6 +134,9 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
     '''
     m and x together act as a filter and decide whether a chunk will be stored in the sample
     '''
+
+    if sample_size != -1:
+        sample_size = sample_size  * 1024 * 1024 * 1024
     
     supported = supported_hashes()
     hf = getattr(hashlib, hash_function)
@@ -161,16 +183,22 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
         t = Timer("scan", logger=None)
         t.start()
 
+        if sample_size != -1:
+            bytes_total = sample_size
+
         i = 0
         bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}]'
         with tqdm(total=bytes_total, desc = "Estimating dedup ratio", unit= " path", ascii=' #', bar_format=bar_format, leave=False) as pbar:
             # seperately process each disk
             with ThreadPoolExecutor(max_workers=path_count) as executor:
                 for path in paths:
-                    executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar)
+                    executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size)
                     i += 1
 
         t.stop()
+
+        if sample_size != -1:
+            bytes_total = config.bytes_total
         
         bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
         
@@ -184,8 +212,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 results["unique_chunks"] = intcomma(len(config.fingerprints))
                 click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                 results["unique_data"] = naturalsize(bytes_unique, True)
-                click.echo("Total Data:\t{}".format(naturalsize(bytes_total, True)))
-                results["total_data"] = naturalsize(bytes_total, True)
+                click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
+                results["data_scanned"] = naturalsize(bytes_total, True)
                 click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_total / bytes_unique))
                 results["dedup_ratio"] = round(bytes_total / bytes_unique, 2)
                 click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
@@ -209,25 +237,38 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
         click.echo("Scanning the paths...")
         
         file_count = 0 # total number of files
+        files_to_scan = 0
+        
         for path in paths:
             for file in iter_files(path, recursive):
                 bytes_total += file[1]
                 file_count += 1
                 click.echo("\rNumber of files found: {}".format(intcomma(file_count)), nl=False)
-
-        click.echo("\nTotal size: {}\n".format(naturalsize(bytes_total, True)))
+                if sample_size != -1 and bytes_total <= sample_size:
+                    files_to_scan += 1
+        
+        click.echo("\nTotal size: {}".format(naturalsize(bytes_total, True)))
+        if sample_size == -1:
+            files_to_scan = file_count
+        else:
+            click.echo("Sample size: {}\n".format(naturalsize(sample_size, True)))
         
         t = Timer("scan", logger=None)
         t.start()
 
         bar_format = '{l_bar}{bar}| {n_fmt}/{total_fmt} [time elapsed: {elapsed}, time remaining: {remaining}]'
-        with tqdm(total=file_count, desc = "Estimating dedup ratio", unit= " file", ascii=' #', bar_format=bar_format, leave=False) as pbar:
+        with tqdm(total=files_to_scan, desc = "Estimating dedup ratio", unit= " file", ascii=' #', bar_format=bar_format, leave=False) as pbar:
             # seperately process files in each input path
             with ThreadPoolExecutor(max_workers=path_count) as executor:
                 for path in paths:
-                    executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, pbar)
+                    executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, pbar, sample_size)
 
         t.stop()
+
+        click.echo("\nFiles scanned: {}".format(str(files_to_scan)))
+        
+        if sample_size != -1:
+            bytes_total = config.bytes_total
         
         bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
         
@@ -242,8 +283,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 results["unique_chunks"] = intcomma(len(config.fingerprints))
                 click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                 results["unique_data"] = naturalsize(bytes_unique, True)
-                click.echo("Total Data:\t{}".format(naturalsize(bytes_total, True)))
-                results["total_data"] = naturalsize(bytes_total, True)
+                click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
+                results["data_scanned"] = naturalsize(bytes_total, True)
                 click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_total / bytes_unique))
                 results["dedup_ratio"] = round(bytes_total / bytes_unique, 2)
                 click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
