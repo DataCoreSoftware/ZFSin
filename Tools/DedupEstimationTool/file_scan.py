@@ -12,6 +12,8 @@ def iter_files(path, recursive=False):
                 try:
                     size = os.path.getsize(filepath)
                     yield [filepath, size]
+                except GeneratorExit:
+                    return
                 except:
                     pass
     else:
@@ -21,34 +23,37 @@ def iter_files(path, recursive=False):
                 try:
                     size = os.path.getsize(filepath)
                     yield [filepath, size]
+                except GeneratorExit:
+                    return
                 except:
                     pass
 
 
-def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar):
+def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar, sample_size):
     """
     creates a threadpool to process the files in given path
     """
     def handler(fut):
         pbar.update(1)
-        
+
     with ThreadPoolExecutor(max_workers=threads) as executor:
         for file in iter_files(path, recursive):
             executor.submit(process_file, file[0], chunksize, hash_function, m, x).add_done_callback(handler)
+            config.bytes_total += file[1]
+            if sample_size != -1 and config.bytes_total >= sample_size:
+                break
             
     
 def process_file(file, chunksize, hash_function, m, x):
     """
     Process the file and add the hash of unique chunks of the file into the global fingerprints.
     """
-    #global files_skipped
+
     try:
         chunker = fastcdc.fastcdc(file, chunksize, chunksize, chunksize, hf = hash_function)
     except Exception as e:
         config.files_skipped += 1
         return
-
-    #global fingeprints
     
     for chunk in chunker:
         if int(chunk.hash, 16) % m == x:
