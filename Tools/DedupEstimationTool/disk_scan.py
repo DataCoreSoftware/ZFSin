@@ -7,13 +7,12 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
     """
     creates a threadpool to process the data in the disk
     """
+    if sample_size != -1:
+        disk_size = sample_size
+    
     disk_size -= disk_size % 512
     size_per_thread = (disk_size // threads) + 1
     size_per_thread -= size_per_thread % 512
-
-    if sample_size != -1 and sample_size <= size_per_thread:
-        size_per_thread = sample_size
-        size_per_thread -= size_per_thread % 512
     
     iters = (size_per_thread // chunksize) + 1
 
