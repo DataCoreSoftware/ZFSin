@@ -26,7 +26,7 @@ def iter_files(path, recursive=False):
                     size = os.path.getsize(filepath)
                     yield [filepath, size]
                 except:
-                    config.files_skipped += 1
+                    pass
     else:
         for name in os.listdir(path):
             filepath = os.path.join(path, name)
@@ -35,9 +35,9 @@ def iter_files(path, recursive=False):
                     size = os.path.getsize(filepath)
                     yield [filepath, size]
                 except:
-                    config.files_skipped += 1
+                    pass
 
-@click.command(cls=DefaultHelp, epilog="The tool performs a full scan of the dataset with or without --nosampling flag unless --sample-size is specified.")
+@click.command(cls=DefaultHelp)
 @click.argument(
     "paths",
     type=click.Path(exists=True, file_okay=True, dir_okay=True, readable=False, resolve_path=True), nargs=-1,
@@ -238,14 +238,21 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
         
         file_count = 0 # total number of files
         files_to_scan = 0
+        bytes_sample = 0
         
         for path in paths:
             for file in iter_files(path, recursive):
+                if sample_size != -1 and bytes_sample + file[1] <= sample_size:
+                    try:
+                        f = open(file[0], 'r')
+                        f.close()
+                        files_to_scan += 1
+                        bytes_sample += file[1]
+                    except:
+                        pass
                 bytes_total += file[1]
                 file_count += 1
                 click.echo("\rNumber of files found: {}".format(intcomma(file_count)), nl=False)
-                if sample_size != -1 and bytes_total <= sample_size:
-                    files_to_scan += 1
         
         click.echo("\nTotal size: {}".format(naturalsize(bytes_total, True)))
         if sample_size == -1:
@@ -265,12 +272,12 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
 
         t.stop()
 
-        click.echo("\nFiles scanned: {}".format(str(files_to_scan)))
+        click.echo("\nFiles scanned: {}".format(str(config.files_scanned)))
         
-        if sample_size != -1:
-            bytes_total = config.bytes_total
-        
-        bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
+        bytes_total = config.bytes_total
+        chunks_unique = min(len(config.fingerprints) * m, config.chunk_count)
+        dedup_ratio = config.chunk_count / chunks_unique
+        bytes_unique = int(bytes_total / dedup_ratio)
         
         if bytes_total:
             if bytes_unique:
@@ -279,14 +286,14 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 time_taken = int(Timer.timers.mean("scan")) + 0.1
                 data_per_s = bytes_total / time_taken
                 results["files"] = intcomma(file_count)
-                click.echo("Unique Chunks:\t{}".format(intcomma(len(config.fingerprints))))
-                results["unique_chunks"] = intcomma(len(config.fingerprints))
+                click.echo("Unique Chunks:\t{}".format(intcomma(chunks_unique)))
+                results["unique_chunks"] = intcomma(chunks_unique)
                 click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                 results["unique_data"] = naturalsize(bytes_unique, True)
                 click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
                 results["data_scanned"] = naturalsize(bytes_total, True)
-                click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_total / bytes_unique))
-                results["dedup_ratio"] = round(bytes_total / bytes_unique, 2)
+                click.echo("DeDupe Ratio:\t{:.2f}".format(dedup_ratio))
+                results["dedup_ratio"] = round(dedup_ratio, 2)
                 click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                 results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
                 click.echo("Files Skipped:\t{}".format(intcomma(config.files_skipped)))
@@ -298,9 +305,11 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 with open(os.path.join(outpath,output), "w") as outfile:
                     outfile.write(json.dumps(results, indent = 2))
             else:
-                print("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator")
+                click.echo("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator if admin privileges are required to read the files")
+            if sample_size != -1:
+                click.echo("\nIf the file sizes exceed the sample size, the data scanned will be less than the sample size. To scan more data, increase the sample size")
         else:
-            click.echo("No data.\n")
+            click.echo("No data or cannot access the files.\n")
 
 
 if __name__ == "__main__":
