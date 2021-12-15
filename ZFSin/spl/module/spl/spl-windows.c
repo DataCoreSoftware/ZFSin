@@ -78,7 +78,7 @@ extern uint64_t		segkmem_total_mem_allocated;
 extern char hostname[MAXHOSTNAMELEN];
 
 uint32_t spl_hostid = 0;
-#define ZFS_MIN_MEMORY_LIMIT	2ULL * 1024ULL * 1024ULL * 1024ULL
+#define ZFS_MIN_MEMORY_LIMIT	1536ULL * 1024ULL * 1024ULL
 
 /*
  * Solaris delay is in ticks (hz) and Windows in 100 nanosecs
@@ -466,7 +466,7 @@ int spl_start(PUNICODE_STRING RegistryPath)
 
 	if (real_total_memory) {
 		zfs_total_memory_limit = spl_GetZfsTotalMemory(RegistryPath);
-		if (zfs_total_memory_limit > ZFS_MIN_MEMORY_LIMIT && zfs_total_memory_limit < real_total_memory)
+		if (zfs_total_memory_limit >= ZFS_MIN_MEMORY_LIMIT && zfs_total_memory_limit < real_total_memory)
 			total_memory = zfs_total_memory_limit;
 		else
 			total_memory = real_total_memory * 50ULL / 100ULL;
