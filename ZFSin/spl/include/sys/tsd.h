@@ -45,6 +45,9 @@ extern void tsd_create(uint_t *, dtor_func_t);
 extern void tsd_destroy(uint_t *);
 extern void tsd_exit(void);
 
+typedef struct _KTHREAD thread_t;
+extern void* tsd_get_by_thread(uint_t, thread_t*);
+
 uint64_t spl_tsd_size(void);
 void tsd_thread_exit(void);
 int spl_tsd_init(void);

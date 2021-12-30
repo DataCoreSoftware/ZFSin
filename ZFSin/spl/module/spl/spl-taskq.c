@@ -501,10 +501,12 @@
 #include <sys/sdt.h>
 #include <sys/sysdc.h>
 #include <sys/note.h>
-
+#include <sys/tsd.h>
 #include <Trace.h>
 
 static kmem_cache_t *taskq_ent_cache, *taskq_cache;
+
+static uint_t taskq_tsd;
 
 /*
  * Pseudo instance numbers for taskqs without explicitly provided instance.
@@ -842,6 +844,8 @@ taskq_ent_destructor(void *buf, void *cdrarg)
 int
 spl_taskq_init(void)
 {
+	tsd_create(&taskq_tsd, NULL);
+
 	taskq_ent_cache = kmem_cache_create("taskq_ent_cache",
 	    sizeof (taskq_ent_t), 0, taskq_ent_constructor,
 	    taskq_ent_destructor, NULL, NULL, NULL, 0);
@@ -878,6 +882,7 @@ spl_taskq_fini(void)
 	mutex_destroy(&taskq_kstat_lock);
 
 	vmem_destroy(taskq_id_arena);
+	tsd_destroy(&taskq_tsd);
 }
 
 
@@ -1388,6 +1393,7 @@ taskq_resume(taskq_t *tq)
 	rw_exit(&tq->tq_threadlock);
 }
 
+#if 0
 int
 taskq_member(taskq_t *tq, struct kthread *thread)
 {
@@ -1408,7 +1414,7 @@ taskq_member(taskq_t *tq, struct kthread *thread)
     mutex_exit(&tq->tq_lock);
 	return (0);
 }
-
+#endif
 /*
  * Creates a thread in the taskq.  We only allow one outstanding create at
  * a time.  We drop and reacquire the tq_lock in order to avoid blocking other
@@ -1512,6 +1518,8 @@ taskq_thread(void *arg)
 
 	CALLB_CPR_INIT(&cprinfo, &tq->tq_lock, callb_generic_cpr,
 				   tq->tq_name);
+
+	tsd_set(taskq_tsd, tq);
 
 	mutex_enter(&tq->tq_lock);
 	thread_id = ++tq->tq_nthreads;
@@ -1640,6 +1648,8 @@ taskq_thread(void *arg)
 
 		cv_broadcast(&tq->tq_wait_cv);
 	}
+
+	tsd_set(taskq_tsd, NULL);
 
 	CALLB_CPR_EXIT(&cprinfo);
 	thread_exit();
@@ -2293,4 +2303,16 @@ taskq_d_kstat_update(kstat_t *ksp, int rw)
 		tqsp->tqd_nfree.value.ui64 += b->tqbucket_nfree;
 	}
 	return (0);
+}
+
+int
+taskq_member(taskq_t* tq, struct kthread* thread)
+{
+	return (tq == (taskq_t*)tsd_get_by_thread(taskq_tsd, thread));
+}
+
+taskq_t*
+taskq_of_curthread(void)
+{
+	return (tsd_get(taskq_tsd));
 }
