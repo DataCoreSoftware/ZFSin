@@ -777,28 +777,20 @@ class Test_ILDC:
         Arguments : None
         Return: None
         '''
-        uri = "servers/" + self.server_id
-        payload_dict = {
-            "Operation": "RemoveCapacityOptimizationDisks",
-            "Disks": self.co_disk,
-        }
-        res = ILDC().do_disable_capacity_optimization(uri, header=None, payload=payload_dict)
-        msg = "Capacity Optimization disabled successfully at server"
-        response_flag = self.verification(res.json(), msg)
-        if response_flag == 1:
-            print("Rest API for disabling the Capacity optimization failed, trying PowerShell")
-            LogCreat().logger_error.error('Rest API for disabling the Capacity optimization failed, trying PowerShell')
-            cmd = "powershell.exe -File \'C:/Program Files/DataCore/Powershell Support\Register-DcsCmdlets.ps1\'" + "\n"
-            process = subprocess.Popen(['powershell', cmd], stdin=subprocess.PIPE,
+        cmd = "powershell.exe -File \'C:/Program Files/DataCore/Powershell Support\Register-DcsCmdlets.ps1\'" + "\n"
+        process = subprocess.Popen(['powershell', cmd], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
                                    universal_newlines=True, bufsize=0,
                                    creationflags=subprocess.CREATE_NEW_CONSOLE)
-            process.stdin.write("connect-dcsserver" + "\n")
-            process.stdin.write("Disable-DcsCapacityOptimization" + "\n")
-            process.stdin.write(self.server_id+ "\n")
-            process.stdin.close()
-            output = process.stdout.read().split('\n')
-            LogCreat().logger_info.info(output)
+        process.stdin.write("connect-dcsserver" + "\n")
+        process.stdin.write("Disable-DcsCapacityOptimization" + "\n")
+        process.stdin.write(self.server_id+ "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        msg="Capacity Optimization disabled successfully at server"
+        LogCreat().logger_info.info(output)
+        LogCreat().logger_info.info(msg)
+        print(msg)
     def delete_pool(self):
         '''
         This method used to delete diskpool.
