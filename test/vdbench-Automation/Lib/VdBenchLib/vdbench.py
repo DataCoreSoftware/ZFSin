@@ -303,7 +303,10 @@ class ResultCreation():
                     else:
                         dedup = str(_.split()[-3].strip('x'))
                 if 'dedup: DDT entries' in _:
-                    ddt = (int(_.split()[3].split(',')[0]))*(int(_.split()[8]))
+                    if _.split()[8].isdigit():
+                        ddt = (int(_.split()[3].split(',')[0]))*(int(_.split()[8]))   #dedup: DDT entries 8, size 67333632 on disk, 21739008 in core
+                    else:
+                        ddt = (int(_.split()[3].split(',')[0]))*(self.convert_to_bytes(_.split()[8]))   #dedup: DDT entries 1921921, size 485B on disk, 156B in core
                 if 'os_mem_alloc' in _:
                     os_mem = _.split()[-1]
                 if 'SIZE  ALLOC   FREE  CKPOINT' in _:
@@ -319,6 +322,25 @@ class ResultCreation():
             return os_mem, ddt, comp, dedup
         except Exception as error:
             LogCreat().logger_error.error(error)
+    def convert_to_bytes(self,core_size):
+        '''
+        This method converts Core size to Bytes
+        Parameters
+        ----------
+        core_size : str
+            Core size
+                
+        Returns
+        -------
+        byte : int
+            Core size in bytes
+        '''
+        byte = 1
+        byte_units = ['B','K','M','G','T']
+        str_len = len(core_size)
+        byte_index = byte_units.index(core_size[str_len-1])
+        byte = int(core_size[0:str_len-1])*(1024**byte_index)
+        return byte
     def first_temp(self):
         '''
         This method update title of HTML page
