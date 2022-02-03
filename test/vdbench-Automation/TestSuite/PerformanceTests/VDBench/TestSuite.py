@@ -182,6 +182,10 @@ class Run():
                        type=str,
                        help='Specify the parameter to be modified. '\
                            'Valid Values are : on,off')
+        my_parser.add_argument('-raid', '-r',
+                       type=str,
+                       help='Specify the RAID enable/disable '\
+                           'Valid Values are : on,off')
         args = my_parser.parse_args()
         if args.modify_zfs == 'on':
             self.set_config_val('first run', 'modify_flag', 'True')
@@ -199,6 +203,10 @@ class Run():
             self.set_config_val('first run', 'l2arc_flag', 'True')
         else:
             self.set_config_val('first run', 'l2arc_flag', 'False')
+        if args.raid == 'on':
+            self.set_config_val('first run', 'raid_flag', 'True')
+        else:
+            self.set_config_val('first run', 'raid_flag', 'False')
         if (args.workload is not None) and (args.disktype is not None):
             self.config_creation(args)
             flag = Test_ILDC().start()
@@ -239,6 +247,8 @@ class Run():
         self.set_config_val('first run', 'l2arc_flag', 'False')        
         self.set_config_val('first run', 'enryption_flag', 'False')
         self.set_config_val('first run', 'modify_flag', 'False')
+        self.set_config_val('first run', 'raid_flag', 'False')
+        self.set_config_val('raid', 'raid_level', '0')
         self.set_config_val('zfs value', 'primarycache', 'default')
         self.set_config_val('zfs value', 'sync', 'default')
         self.set_config_val('zfs value', 'compression', 'default')
