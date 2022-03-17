@@ -189,9 +189,11 @@ class ResultCreation():
         status_slog = 'OFF'
         status_l2arc = 'OFF'
         status_encrp = 'OFF'
+        status_mirror_slog = 'OFF'
         raid_level_ = 0
         slog_disks = None
         l2arc_disks = None
+        mirror_slog_disks = None
         configur = ConfigParser()
         configur.read(r"../../../Config/VdBench_config/VDBench_config.ini")
         print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'l2arc_flag'), configur.get('first run', 'enryption_flag'), configur.get('first run', 'raid_flag'))
@@ -205,6 +207,9 @@ class ResultCreation():
             status_encrp = 'ON'
         if configur.get('first run', 'raid_flag').strip() == 'True':
             raid_level_ = configur.get('raid', 'raid_level')
+        if configur.get('first run', 'mirror_slog_flag').strip() == 'True':
+            status_mirror_slog = 'ON'
+            mirror_slog_disks = configur.get('mirror slog', 'mirror_s_log_disk')
         co_disks = configur.get('Server level co', 's_disk')
         d_pool_disks = configur.get('disk pool disk', 'd_disk')
         uri = "servers"
@@ -224,7 +229,7 @@ class ResultCreation():
         zfs = str(float(zfs)) + ' GB'
         ssy = str(float(ssy)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
-                         str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp, status_l2arc, str(raid_level_), co_disks, d_pool_disks, slog_disks, l2arc_disks ]
+                         str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp, status_l2arc, str(raid_level_), status_mirror_slog, co_disks, d_pool_disks, slog_disks, l2arc_disks, mirror_slog_disks ]
     def run(self):
         '''
         This method create dynamic folder structure to store results

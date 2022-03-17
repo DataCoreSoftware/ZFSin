@@ -51,6 +51,7 @@ class Test_ILDC:
         self.l2arc = []
         self.server_name = ''
         self.zfs_zvol = []
+        self.mirror_slog = []
     def start(self):
         '''
         This method execute the test.
@@ -93,14 +94,16 @@ class Test_ILDC:
         self.config_dict['co disk'] = configur.get('Server level co', 's_disk').split(',')
         self.config_dict['diskpool_disk'] = configur.get('disk pool disk', 'd_disk').split(',')
         self.config_dict['slog_disk'] = configur.get('slog', 's_log_disk').split(',')
-        self.config_dict['l2arc_disk'] = configur.get('l2arc', 'l2arc_disk').split(',')  
+        self.config_dict['l2arc_disk'] = configur.get('l2arc', 'l2arc_disk').split(',')
+        self.config_dict['mirror_slog_disk'] = configur.get('mirror slog', 'mirror_s_log_disk').split(',')
         self.config_dict['raid_level'] = configur.get('raid', 'raid_level')
-        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk'] + self.config_dict['slog_disk'] + self.config_dict['l2arc_disk']
+        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk'] + self.config_dict['slog_disk'] + self.config_dict['l2arc_disk'] + self.config_dict['mirror_slog_disk']
         self.config_dict['encryption_flag'] = configur.get('first run', 'enryption_flag')
         self.config_dict['slog_flag'] = configur.get('first run', 'slog_flag')
         self.config_dict['l2arc_flag'] = configur.get('first run', 'l2arc_flag')
         self.config_dict['modify_flag'] = configur.get('first run', 'Modify_flag')
         self.config_dict['raid_flag'] = configur.get('first run', 'raid_flag')
+        self.config_dict['mirror_slog_flag'] = configur.get('first run', 'mirror_slog_flag')
         if configur.get('first run', 'modify_flag').strip() == 'True':
             self.config_dict['primaycach'] = configur.get('zfs value', 'primarycache')
             self.config_dict['zfs_sync'] = configur.get('zfs value', 'sync')
@@ -231,6 +234,8 @@ class Test_ILDC:
                     self.disk_pool_disk.append(pd_ids[int(_)])
                 elif _ in self.config_dict['l2arc_disk']:
                     self.l2arc.append(pd_ids[int(_)])
+                elif _ in self.config_dict['mirror_slog_disk']:
+                    self.mirror_slog.append(pd_ids[int(_)])
                 else:
                     self.slog.append(pd_ids[int(_)])
                 self.release_disk(pd_ids[int(_)])
@@ -490,6 +495,57 @@ class Test_ILDC:
         output = process.stdout.read().split('\n')
         LogCreat().logger_info.info('L2ARC is Enabled')
         
+    def set_mirror_slog(self):
+        '''
+        This method set Mirror SLOG 
+
+        Returns
+        -------
+        None.
+
+        '''
+        process = subprocess.Popen('cmd.exe', stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE, shell=False)
+        process.stdin.write('cd /d c:\\' + "\n")
+        process.stdin.write("cd \"C:/Program Files/DataCore/SANsymphony/zfs\"" + "\n")
+        process.stdin.write("zfs list" + "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        
+        out = output[9].split()[0]
+        drive = ''
+        for id_ in self.config_dict['mirror_slog_disk']:
+            drive = drive + ' ' +'PHYSICALDRIVE' + str(id_) + ' '
+        cmd_ = 'zpool add -o ashift=12 ' + out + ' log mirror ' + drive.strip()
+        self.call_mirror_log(cmd_)
+        
+    def call_mirror_log(self, cmd_):
+        '''
+        This method create command for Mirror SLOG setting
+
+        Parameters
+        ----------
+        cmd_ : str
+            extract zpool from zfs list
+
+        Returns
+        -------
+        None.
+
+        '''
+        process = subprocess.Popen('cmd.exe', stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE, shell=False)
+        process.stdin.write('cd /d c:\\' + "\n")
+        process.stdin.write("cd \"C:/Program Files/DataCore/SANsymphony/zfs\"" + "\n")
+        process.stdin.write(cmd_ + "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        LogCreat().logger_info.info('Mirror SLOG is Enabled')
+        
     def input_for_test(self):
         '''
         This method pass disk and workload details to the tool.
@@ -543,10 +599,16 @@ class Test_ILDC:
             if vd_name.lower() != "standard":
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
-                    self.set_slog()
+                    #self.set_slog()
+                    self.set_slog_api()
                 if self.config_dict['l2arc_flag'] == 'True':
                     time.sleep(10)
-                    self.set_l2arc()                    
+                    #self.set_l2arc()
+                    self.set_l2arc_api() 
+                if self.config_dict['mirror_slog_flag'] == 'True':
+                    time.sleep(10)
+                    #self.set_mirror_slog()
+                    self.set_mirror_slog_api()
             if flag == 0:
                 time.sleep(15)
                 self.create_diskpool(vd_name)
@@ -598,7 +660,7 @@ class Test_ILDC:
         '''
         flag = 0
         try:
-            if 'ErrorCode' not in res_json.keys():
+            if type(res_json) is list or 'ErrorCode' not in res_json.keys():
                 self.test_status = "Pass"
                 LogCreat().logger_info.info(msg)
                 print(msg)
@@ -626,6 +688,53 @@ class Test_ILDC:
             payload_dict["RaidLevel"] = self.config_dict['raid_level']
         res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
         msg = "Capacity Optimization enabled successfully at server"
+        flag = self.verification(res.json(), msg)
+        return flag
+    def set_slog_api(self):
+        '''
+        This method set SLOG.
+        Arguments : None
+        Return: None
+        '''
+        uri = "servers/" + self.server_id
+        payload_dict = {
+            "Operation": "AddCapacityOptimizationDisks",
+            "Disks": self.slog,
+            "DiskType" : 2,
+        }
+        res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
+        msg = "SLOG is Enabled"
+        flag = self.verification(res.json(), msg)
+        return flag
+    def set_l2arc_api(self):
+        '''
+        This method set L2ARC.
+        Arguments : None
+        Return: None
+        '''
+        uri = "servers/" + self.server_id
+        payload_dict = {
+            "Operation": "AddCapacityOptimizationDisks",
+            "Disks": self.l2arc,
+            "DiskType" : 3,
+        }
+        res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
+        msg = "L2ARC is Enabled"
+        flag = self.verification(res.json(), msg)
+        return flag
+    def set_mirror_slog_api(self):
+        '''
+        This method set Mirror SLOG.
+        Arguments : None
+        Return: None
+        '''
+        uri = "servers/" + self.server_id
+        payload_dict = {
+            "Operation": "AddCapacityOptimizationMirrorSLOG",
+            "Disks": self.mirror_slog,
+        }
+        res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
+        msg = "Mirror SLOG is Enabled"
         flag = self.verification(res.json(), msg)
         return flag
     def create_diskpool(self, vd_name):
