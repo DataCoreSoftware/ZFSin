@@ -175,6 +175,7 @@ class ResultCreation():
     result_path = ''
     merge_list = []
     zfs_max = ''
+    zfs_limit =''
     build = ''
     def get_server(self):
         '''
@@ -196,7 +197,7 @@ class ResultCreation():
         mirror_slog_disks = None
         configur = ConfigParser()
         configur.read(r"../../../Config/VdBench_config/VDBench_config.ini")
-        print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'l2arc_flag'), configur.get('first run', 'enryption_flag'), configur.get('first run', 'raid_flag'))
+        print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'l2arc_flag'), configur.get('first run', 'enryption_flag'), configur.get('first run', 'raid_flag'), configur.get('first run', 'mirror_slog_flag'))
         if configur.get('first run', 'slog_flag').strip() == 'True':
             status_slog = 'ON'
             slog_disks = configur.get('slog', 's_log_disk')
@@ -225,11 +226,13 @@ class ResultCreation():
         if configur.get('zfs value', 'primarycache').lower() != 'default':
             primaycach = configur.get('zfs value', 'primarycache').lower()
         zfs = round((float(self.zfs_max)/1073741824),2)
+        zfs_mem_limit = round((float(self.zfs_limit)/1073741824),2)
         ssy = round((float(ram) * 0.65)/1073741824, 2) - zfs
         zfs = str(float(zfs)) + ' GB'
         ssy = str(float(ssy)) + ' GB'
+        zfs_mem_limit = str(float(zfs_mem_limit)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
-                         str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp, status_l2arc, str(raid_level_), status_mirror_slog, co_disks, d_pool_disks, slog_disks, l2arc_disks, mirror_slog_disks ]
+                         str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp, status_l2arc, str(raid_level_), status_mirror_slog, co_disks, d_pool_disks, slog_disks, l2arc_disks, mirror_slog_disks, zfs_mem_limit ]
     def run(self):
         '''
         This method create dynamic folder structure to store results
@@ -305,6 +308,7 @@ class ResultCreation():
             process.stdin.write("zpool list" + "\n")
             process.stdin.write("zfs get compressratio" + "\n")
             process.stdin.write("kstat.exe -p zfs:0:tunable:zfs_arc_max" + "\n")
+            process.stdin.write("kstat.exe -p zfs:0:tunable:zfs_total_memory_limit" + "\n")
             process.stdin.close()
             output = process.stdout.read().split('\n')
             count = 0
@@ -329,6 +333,8 @@ class ResultCreation():
                     count = 1
                 if 'zfs_arc_max' in _:
                     self.zfs_max = _.split()[-1]
+                if 'zfs_total_memory_limit'  in _:
+                    self.zfs_limit = _.split()[-1]
             if ddt != '-':
                 ddt = str(round(ddt/1048576, 2))
             if os_mem != '-':
@@ -353,7 +359,7 @@ class ResultCreation():
         byte_units = ['B','K','M','G','T']
         str_len = len(core_size)
         byte_index = byte_units.index(core_size[str_len-1])
-        byte = int(core_size[0:str_len-1])*(1024**byte_index)
+        byte = float(core_size[0:str_len-1])*(1024**byte_index)
         return byte
     def first_temp(self):
         '''
