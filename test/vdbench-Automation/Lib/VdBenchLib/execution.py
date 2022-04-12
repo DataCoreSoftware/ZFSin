@@ -97,13 +97,19 @@ class Test_ILDC:
         self.config_dict['l2arc_disk'] = configur.get('l2arc', 'l2arc_disk').split(',')
         self.config_dict['mirror_slog_disk'] = configur.get('mirror slog', 'mirror_s_log_disk').split(',')
         self.config_dict['raid_level'] = configur.get('raid', 'raid_level')
-        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk'] + self.config_dict['slog_disk'] + self.config_dict['l2arc_disk'] + self.config_dict['mirror_slog_disk']
+        self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk']
         self.config_dict['encryption_flag'] = configur.get('first run', 'enryption_flag')
         self.config_dict['slog_flag'] = configur.get('first run', 'slog_flag')
         self.config_dict['l2arc_flag'] = configur.get('first run', 'l2arc_flag')
         self.config_dict['modify_flag'] = configur.get('first run', 'Modify_flag')
         self.config_dict['raid_flag'] = configur.get('first run', 'raid_flag')
         self.config_dict['mirror_slog_flag'] = configur.get('first run', 'mirror_slog_flag')
+        if configur.get('first run', 'slog_flag').strip() == 'True':
+            self.disk = self.disk + self.config_dict['slog_disk']
+        if configur.get('first run', 'l2arc_flag').strip() == 'True':
+            self.disk = self.disk + self.config_dict['l2arc_disk']
+        if configur.get('first run', 'mirror_slog_flag').strip() == 'True':
+            self.disk = self.disk + self.config_dict['mirror_slog_disk']
         if configur.get('first run', 'modify_flag').strip() == 'True':
             self.config_dict['primaycach'] = configur.get('zfs value', 'primarycache')
             self.config_dict['zfs_sync'] = configur.get('zfs value', 'sync')
