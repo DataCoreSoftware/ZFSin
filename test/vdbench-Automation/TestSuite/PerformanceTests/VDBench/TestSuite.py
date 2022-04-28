@@ -199,10 +199,12 @@ class Run():
             self.set_config_val('first run', 'enryption_flag', 'True')
         else:
             self.set_config_val('first run', 'enryption_flag', 'False')
+        '''
         if args.slogselect == 'on':
             self.set_config_val('first run', 'slog_flag', 'True')
         else:
             self.set_config_val('first run', 'slog_flag', 'False')
+        '''
         if args.l2arcselect == 'on':
             self.set_config_val('first run', 'l2arc_flag', 'True')
         else:

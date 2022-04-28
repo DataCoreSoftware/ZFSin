@@ -606,7 +606,6 @@ class Test_ILDC:
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
                     #self.set_slog()
-                    self.set_slog_api()
                 if self.config_dict['l2arc_flag'] == 'True':
                     time.sleep(10)
                     #self.set_l2arc()
@@ -696,22 +695,6 @@ class Test_ILDC:
         msg = "Capacity Optimization enabled successfully at server"
         flag = self.verification(res.json(), msg)
         return flag
-    def set_slog_api(self):
-        '''
-        This method set SLOG.
-        Arguments : None
-        Return: None
-        '''
-        uri = "servers/" + self.server_id
-        payload_dict = {
-            "Operation": "AddCapacityOptimizationDisks",
-            "Disks": self.slog,
-            "DiskType" : 2,
-        }
-        res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
-        msg = "SLOG is Enabled"
-        flag = self.verification(res.json(), msg)
-        return flag
     def set_l2arc_api(self):
         '''
         This method set L2ARC.
@@ -720,14 +703,13 @@ class Test_ILDC:
         '''
         uri = "servers/" + self.server_id
         payload_dict = {
-            "Operation": "AddCapacityOptimizationDisks",
-            "Disks": self.l2arc,
-            "DiskType" : 3,
+            "Operation": "AddCapacityOptimizationL2ARC",
+            "Disk": self.l2arc[0]
         }
         res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
         msg = "L2ARC is Enabled"
         flag = self.verification(res.json(), msg)
-        return flag
+        return flag   
     def set_mirror_slog_api(self):
         '''
         This method set Mirror SLOG.

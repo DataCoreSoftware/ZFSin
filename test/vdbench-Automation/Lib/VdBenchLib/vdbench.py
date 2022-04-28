@@ -199,18 +199,15 @@ class ResultCreation():
         configur.read(r"../../../Config/VdBench_config/VDBench_config.ini")
         print('check',configur.get('first run', 'slog_flag'), configur.get('first run', 'l2arc_flag'), configur.get('first run', 'enryption_flag'), configur.get('first run', 'raid_flag'), configur.get('first run', 'mirror_slog_flag'))
         if configur.get('first run', 'slog_flag').strip() == 'True':
-            status_slog = 'ON'
-            slog_disks = configur.get('slog', 's_log_disk')
+            status_slog = configur.get('slog', 's_log_disk')
         if configur.get('first run', 'l2arc_flag').strip() == 'True':
-            status_l2arc = 'ON'
-            l2arc_disks = configur.get('l2arc', 'l2arc_disk')
+            status_l2arc = configur.get('l2arc', 'l2arc_disk')
         if configur.get('first run', 'enryption_flag').strip() == 'True':
             status_encrp = 'ON'
         if configur.get('first run', 'raid_flag').strip() == 'True':
             raid_level_ = configur.get('raid', 'raid_level')
         if configur.get('first run', 'mirror_slog_flag').strip() == 'True':
-            status_mirror_slog = 'ON'
-            mirror_slog_disks = configur.get('mirror slog', 'mirror_s_log_disk')
+            status_mirror_slog = configur.get('mirror slog', 'mirror_s_log_disk')
         co_disks = configur.get('Server level co', 's_disk')
         d_pool_disks = configur.get('disk pool disk', 'd_disk')
         uri = "servers"
@@ -227,12 +224,37 @@ class ResultCreation():
             primaycach = configur.get('zfs value', 'primarycache').lower()
         zfs = round((float(self.zfs_max)/1073741824),2)
         zfs_mem_limit = round((float(self.zfs_limit)/1073741824),2)
-        ssy = round((float(ram) * 0.65)/1073741824, 2) - zfs
+        #ssy = round((float(ram) * 0.65)/1073741824, 2) - zfs
+        ssy = round(float(self.get_ssy_cache())/1048576, 2)
         zfs = str(float(zfs)) + ' GB'
         ssy = str(float(ssy)) + ' GB'
         zfs_mem_limit = str(float(zfs_mem_limit)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
-                         str(ssy), primaycach, ram_, sync, '500GB', status_slog , status_encrp, status_l2arc, str(raid_level_), status_mirror_slog, co_disks, d_pool_disks, slog_disks, l2arc_disks, mirror_slog_disks, zfs_mem_limit ]
+                         str(ssy), primaycach, ram_, sync, '500GB', zfs_mem_limit,  status_encrp, co_disks, d_pool_disks, str(raid_level_), status_slog, status_l2arc, status_mirror_slog ]
+    def get_ssy_cache(self):
+        '''
+        This method gets SSY Cache from DcsAddMem
+                
+        Returns
+        -------
+        byte : int
+            SSY Cache size in bytes
+        '''
+        byte = 1
+        process = subprocess.Popen('powershell', stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    encoding='utf8', universal_newlines=True, bufsize=0,
+                                    creationflags=subprocess.CREATE_NEW_CONSOLE, shell=False)
+        process.stdin.write("Get-Process DcsAddMem" + "\n")
+        process.stdin.close()
+        output = process.stdout.read().split('\n')
+        index = 3
+        for _ in output:
+            if 'WS(K)' in _:
+                index = _.split().index('WS(K)')
+            if 'DcsAddMem' in _:
+                byte = _.split()[index]
+        return byte
     def run(self):
         '''
         This method create dynamic folder structure to store results
