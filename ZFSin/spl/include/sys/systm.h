@@ -20,29 +20,31 @@ struct bsd_timeout_wrapper {
 /* bsd_timeout will create a new thread, and the new thread will
 * first sleep the desired duration, then call the wanted function
 */
+#define	BSD_TIMEOUT_MAGIC 0x42994299
 static inline void bsd_timeout_handler(void *arg)
 {
 	struct bsd_timeout_wrapper *btw = arg;
 	KeWaitForSingleObject(&btw->timer, Executive, KernelMode, TRUE, NULL);
-	if (btw->init == 0x42994299) btw->func(btw->arg);
+	if (btw->init == BSD_TIMEOUT_MAGIC)
+		btw->func(btw->arg);
 	thread_exit();
 }
 
-#define BSD_TIMEOUT_MAGIC 0x42994299
 static inline void bsd_untimeout(void(*func)(void *), void *ID)
 {
 	/*
-	* Unfortunately, calling KeSetTimer() does not Signal (or abort) any thread
+	* Unfortunately, calling KeCancelTimer() does not Signal (or abort) any thread
 	* sitting in KeWaitForSingleObject() so they would wait forever. Instead we
 	* change the timeout to be now, so that the threads can exit.
 	*/
 	struct bsd_timeout_wrapper *btw = (struct bsd_timeout_wrapper *)ID;
-	LARGE_INTEGER p = { -1 };
-	btw->init = 0;
-	// Investigate why this assert triggers on Unload
-	//ASSERT(btw->init == BSD_TIMEOUT_MAGIC); // timer was not initialized 
-	if(btw->init == BSD_TIMEOUT_MAGIC)
+	LARGE_INTEGER p = { .QuadPart = -1 };
+	ASSERT(btw != NULL);
+	// If timer was armed, release it.
+	if (btw->init == BSD_TIMEOUT_MAGIC) {
+		btw->init = 0; // stop it from running func()
 		KeSetTimer(&btw->timer, p, NULL);
+	}
 }
 
 static inline void bsd_timeout(void *FUNC, void *ID, struct timespec *TIM)
@@ -65,6 +67,32 @@ static inline void bsd_timeout(void *FUNC, void *ID, struct timespec *TIM)
 		/* Another option would have been to use taskq, as it can cancel */
 		thread_create(NULL, 0, bsd_timeout_handler, ID, 0, &p0,
 			TS_RUN, minclsyspri);
+	}
+}
+
+ /*
+ * Unfortunately, calling KeCancelTimer() does not Signal (or abort) any thread
+ * sitting in KeWaitForSingleObject() so they would wait forever. Call this
+ * function only when there are no threads waiting in bsd_timeout_handler().
+ * Unloading the driver with loaded timer object can cause bugcheck when the
+ * timer fires.
+ */
+static inline void bsd_timeout_cancel(void *ID)
+{
+	struct bsd_timeout_wrapper *btw = (struct bsd_timeout_wrapper *)ID;
+
+	if (btw == NULL) {
+		return;
+	}
+
+	if (btw->func != NULL) {
+		if (KeCancelTimer(&btw->timer)) {
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+				"bsd_cancel_timer():timer object was loaded.Cancelled it.\n");
+		} else {
+			DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+				"bsd_cancel_timer():timer object is not loaded.\n");
+		}
 	}
 }
 
