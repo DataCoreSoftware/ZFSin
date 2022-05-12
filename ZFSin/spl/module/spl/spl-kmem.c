@@ -5479,7 +5479,14 @@ spl_kmem_thread_fini(void)
 	kmem_taskq = 0;
 
 	kmem_move_fini();
+}
 
+void
+spl_kmem_timer_fini(void)
+{
+	bsd_timeout_cancel(&kmem_update_timer);
+	bsd_timeout_cancel(&kmem_reaping);
+	bsd_timeout_cancel(&kmem_reaping_idspace);
 }
 
 void
