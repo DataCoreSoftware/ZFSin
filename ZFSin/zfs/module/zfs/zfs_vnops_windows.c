@@ -3986,6 +3986,10 @@ ioctlDispatcher(
 				dprintf("ZPOOL_GET_IOPS_THRPUT_STATS\n");
 				Status = zpool_get_iops_thrput(DeviceObject, Irp, IrpSp);
 				break;
+			case ZPOOL_ZFS_GET_METRICS_DATA:
+				dprintf("ZPOOL_ZFS_GET_METRICS_DATA\n");
+				Status = zpool_zfs_get_metrics(DeviceObject, Irp, IrpSp);
+				break;
 			default:
 				dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
 			}
