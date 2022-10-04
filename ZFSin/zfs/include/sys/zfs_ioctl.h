@@ -671,6 +671,19 @@ typedef struct
 	uint64_t count;
 }stat_pair;
 
+#define ZPOOL_ZFS_GET_METRICS_DATA	CTL_CODE(ZFSIOCTL_TYPE, 0xFFD, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+typedef struct {
+	unsigned __int64	compress_ratio;
+	unsigned __int64	used;
+	unsigned __int64	available;
+	unsigned __int64	zpool_allocated;
+	unsigned __int64	zpool_size;
+	unsigned __int64	zpool_dedup_ratio;
+	unsigned __int64	zfs_volSize;
+
+	char name[MAXNAMELEN];
+}zpool_zfs_metrics;
 
 
 #define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -736,6 +749,10 @@ extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
 extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
 extern void latency_stats(uint64_t* histo, unsigned int buckets, stat_pair* lat);
+extern uint64_t  getUsedData(char* name);
+extern uint64_t  getCompressRatio(char* name);
+extern uint64_t  getAvail(char* name);
+extern uint64_t getZvolSize(char* name);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,

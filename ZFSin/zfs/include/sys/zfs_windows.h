@@ -158,5 +158,5 @@ extern NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT, PIRP, PIO_STACK
 extern NTSTATUS ioctl_query_stable_guid(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);
 extern NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp);
 extern NTSTATUS zpool_get_iops_thrput(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp);
-
+extern NTSTATUS zpool_zfs_get_metrics(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp);
 #endif

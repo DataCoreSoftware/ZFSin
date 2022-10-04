@@ -407,6 +407,58 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 	return STATUS_SUCCESS;
 }
 
+NTSTATUS zpool_zfs_get_metrics(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(zpool_zfs_metrics)) {
+		Irp->IoStatus.Information = sizeof(zpool_zfs_metrics);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	zpool_zfs_metrics* perf = (zpool_zfs_metrics*)Irp->AssociatedIrp.SystemBuffer;
+
+	if (!perf)
+		return STATUS_INVALID_PARAMETER;
+
+	perf->name[MAXNAMELEN - 1] = '\0';
+
+	int is_zpool = 1;
+	if (strchr(perf->name, '/') != NULL) {
+		is_zpool = 0;
+	}
+
+	perf->zpool_dedup_ratio = 0;
+	perf->zpool_allocated = 0;
+	perf->zpool_size = 0;
+	perf->zfs_volSize = 0;
+
+	perf->used = getUsedData(perf->name);
+	perf->compress_ratio = getCompressRatio(perf->name);
+	perf->available = getAvail(perf->name);
+
+	if (is_zpool == 1) {
+		mutex_enter(&spa_namespace_lock);
+		spa_t* spa_perf;
+		if ((spa_perf = spa_lookup(perf->name)) == NULL) {
+			mutex_exit(&spa_namespace_lock);
+			return STATUS_NOT_FOUND;
+		}
+		vdev_stat_t vs = { 0 };
+		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
+		vdev_get_stats(spa_perf->spa_root_vdev, &vs);
+		perf->zpool_dedup_ratio = ddt_get_pool_dedup_ratio(spa_perf);
+		spa_config_exit(spa_perf, SCL_ALL, FTAG);
+		mutex_exit(&spa_namespace_lock);
+
+		perf->zpool_allocated = vs.vs_alloc;
+		perf->zpool_size = vs.vs_space;
+
+	}
+	else
+		perf->zfs_volSize = getZvolSize(perf->name);
+
+	Irp->IoStatus.Information = sizeof(zpool_zfs_metrics);
+	return STATUS_SUCCESS;
+}
+
 
 NTSTATUS zpool_get_iops_thrput(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
@@ -2847,6 +2899,68 @@ zfs_ioc_objset_stats(zfs_cmd_t *zc)
 	}
 
 	return (error);
+}
+
+
+static uint64_t
+getUsedData(char* name)
+{
+	int error;
+	objset_t* os;
+	uint64_t val = 0;
+	error = dmu_objset_hold(name, FTAG, &os);
+	if (error == 0) {
+		dsl_dataset_t* ds = os->os_dsl_dataset;
+		val = dsl_get_used(ds);
+		dmu_objset_rele(os, FTAG);
+	}
+	return val;
+}
+
+static uint64_t
+getCompressRatio(char* name)
+{
+	int error;
+	objset_t* os;
+	uint64_t val = 0;
+	error = dmu_objset_hold(name, FTAG, &os);
+	if (error == 0) {
+		dsl_dataset_t* ds = os->os_dsl_dataset;
+		val = dsl_get_compressratio(ds);
+		dmu_objset_rele(os, FTAG);
+	}
+	return val;
+}
+
+static uint64_t
+getAvail(char* name)
+{
+	int error;
+	objset_t* os;
+	uint64_t val = 0;
+	error = dmu_objset_hold(name, FTAG, &os);
+	if (error == 0) {
+		dsl_dataset_t* ds = os->os_dsl_dataset;
+		val = dsl_get_available(ds);
+		dmu_objset_rele(os, FTAG);
+	}
+	return val;
+}
+
+static uint64_t
+getZvolSize(char* name)
+{
+	int error;
+	uint64_t val = 0;
+	objset_t* os;
+	uint64_t volSize = 0;
+	error = dmu_objset_hold(name, FTAG, &os);
+	if (error == 0) {
+		zap_lookup(os, ZVOL_ZAP_OBJ, "size", 8, 1, &val);
+		volSize = val;
+		dmu_objset_rele(os, FTAG);
+	}
+	return volSize;
 }
 
 /*
