@@ -703,8 +703,9 @@ class Test_ILDC:
         '''
         uri = "servers/" + self.server_id
         payload_dict = {
-            "Operation": "AddCapacityOptimizationL2ARC",
-            "Disk": self.l2arc[0]
+            "Operation": "AddCapacityOptimizationDisks",
+            "Disks": self.l2arc,
+            "DiskType" : 3
         }
         res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
         msg = "L2ARC is Enabled"
