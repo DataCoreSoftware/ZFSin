@@ -1508,14 +1508,20 @@ zfs_ioctl(libzfs_handle_t *hdl, unsigned long request, zfs_cmd_t *zc)
 {
 	int error;
 
+	boolean_t canLog = B_FALSE;
 	if (request == ZFS_IOC_POOL_STATS || request == ZFS_IOC_POOL_TRYIMPORT || request == ZFS_IOC_POOL_IMPORT || request == ZFS_IOC_POOL_STATS || request == ZFS_IOC_OBJSET_STATS
 		|| request == ZFS_IOC_DATASET_LIST_NEXT || request == ZFS_IOC_POOL_GET_PROPS)
 	{
 		TraceWrite("Going to issue IOCTL to driver for request: %d [%s:%d]", request, __func__, __LINE__);
+		canLog = B_TRUE;
 	}
 	errno = 0;
 	error = ioctl(hdl->libzfs_fd, request, zc);
 
+	if (canLog)
+	{
+		TraceWrite("IOCTL request: %d  to the driver completed [%s:%d]", request, __func__, __LINE__);
+	}
 #ifdef _WIN32
 	// Nothing will fill in errno, so we have to
 	if (error)
