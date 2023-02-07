@@ -65,6 +65,7 @@ void libshare_init(void);
 
 #include <../zfs_config.h>
 
+extern int TraceWrite(const char* fmt, ...);
 int
 libzfs_errno(libzfs_handle_t *hdl)
 {
@@ -1407,6 +1408,7 @@ zcmd_alloc_dst_nvlist(libzfs_handle_t *hdl, zfs_cmd_t *zc, size_t len)
 {
 	if (len == 0)
 		len = 16 * 1024;
+	TraceWrite("zcmd_alloc_dst_nvlist function started zc_nvlist_dst_size=%d [%s:%d]", len, __func__, __LINE__);
 	zc->zc_nvlist_dst_size = len;
 	zc->zc_nvlist_dst =
 		(uint64_t)(uintptr_t)zfs_alloc(hdl, zc->zc_nvlist_dst_size);
@@ -1487,6 +1489,7 @@ zcmd_write_src_nvlist(libzfs_handle_t *hdl, zfs_cmd_t *zc, nvlist_t *nvl)
 int
 zcmd_read_dst_nvlist(libzfs_handle_t *hdl, zfs_cmd_t *zc, nvlist_t **nvlp)
 {
+	TraceWrite("zcmd_read_dst_nvlist function stared [%s:%d]", __func__, __LINE__);
 	if (nvlist_unpack((void *)(uintptr_t)zc->zc_nvlist_dst,
             zc->zc_nvlist_dst_size, nvlp, 0) != 0) {
 		return (no_memory(hdl));
@@ -1505,6 +1508,11 @@ zfs_ioctl(libzfs_handle_t *hdl, unsigned long request, zfs_cmd_t *zc)
 {
 	int error;
 
+	if (request == ZFS_IOC_POOL_STATS || request == ZFS_IOC_POOL_TRYIMPORT || request == ZFS_IOC_POOL_IMPORT || request == ZFS_IOC_POOL_STATS || request == ZFS_IOC_OBJSET_STATS
+		|| request == ZFS_IOC_DATASET_LIST_NEXT || request == ZFS_IOC_POOL_GET_PROPS)
+	{
+		TraceWrite("Going to issue IOCTL to driver for request: %d [%s:%d]", request, __func__, __LINE__);
+	}
 	errno = 0;
 	error = ioctl(hdl->libzfs_fd, request, zc);
 

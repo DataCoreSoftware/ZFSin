@@ -98,6 +98,7 @@ typedef struct pool_list {
 	name_entry_t		*names;
 } pool_list_t;
 
+extern int TraceWrite(const char* fmt, ...);
 static char *
 get_devid(const char *path)
 {
@@ -453,7 +454,7 @@ refresh_config(libzfs_handle_t *hdl, nvlist_t *config)
 	nvlist_t *nvl;
 	zfs_cmd_t zc = {"\0"};
 	int err;
-
+	TraceWrite("refresh_config function started [%s:%d]", __func__, __LINE__);
 	if (zcmd_write_conf_nvlist(hdl, &zc, config) != 0)
 		return (NULL);
 
@@ -462,7 +463,7 @@ refresh_config(libzfs_handle_t *hdl, nvlist_t *config)
 		zcmd_free_nvlists(&zc);
 		return (NULL);
 	}
-
+	TraceWrite("Going to call ZFS_IOC_POOL_TRYIMPORT IOCTL[%s:%d]", __func__, __LINE__);
 	while ((err = zfs_ioctl(hdl, ZFS_IOC_POOL_TRYIMPORT,
 	    &zc)) != 0 && errno == ENOMEM) {
 		if (zcmd_expand_dst_nvlist(hdl, &zc) != 0) {
@@ -470,7 +471,7 @@ refresh_config(libzfs_handle_t *hdl, nvlist_t *config)
 			return (NULL);
 		}
 	}
-
+	TraceWrite("After ZFS_IOC_POOL_TRYIMPORT IOCTL [%s:%d]", __func__, __LINE__);
 	if (err) {
 		zcmd_free_nvlists(&zc);
 		return (NULL);
@@ -513,6 +514,7 @@ static nvlist_t *
 get_configs(libzfs_handle_t *hdl, pool_list_t *pl, boolean_t active_ok,
     nvlist_t *policy)
 {
+	TraceWrite("get_configs function started [%s:%d]", __func__, __LINE__);
 	pool_entry_t *pe;
 	vdev_entry_t *ve;
 	config_entry_t *ce;
@@ -548,6 +550,7 @@ get_configs(libzfs_handle_t *hdl, pool_list_t *pl, boolean_t active_ok,
 		 * from the first one we find, and then go through the rest and
 		 * add them as necessary to the 'vdevs' member of the config.
 		 */
+		TraceWrite("Going to iterate the Vdevs [%s:%d]", __func__, __LINE__);
 		for (ve = pe->pe_vdevs; ve != NULL; ve = ve->ve_next) {
 
 			/*
@@ -1019,6 +1022,7 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 int
 zpool_read_label_win(HANDLE h, off_t offset, uint64_t len, nvlist_t **config, int *num_labels)
 {
+	TraceWrite(" zpool_read_label_win function started ThreadID:%lu [%s:%d]", GetCurrentThreadId(),__func__,__LINE__);
 	int l, count = 0;
 	vdev_label_t *label;
 	nvlist_t *expected_config = NULL;
@@ -1468,8 +1472,10 @@ zpool_open_func_win(void *arg)
 	uint64_t len = 0;
 	uint64_t drive_len;
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
+	TraceWrite("zpool_open_func_win started ThreadID:%lu [%s:%d]",GetCurrentThreadId(),__func__,__LINE__);
 	if (rn->rn_nozpool)
 		return;
+	TraceWrite("rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name,GetCurrentThreadId(),__func__,__LINE__);
 	/*
 	* Skip devices with well known prefixes there can be side effects
 	* when opening devices which need to be avoided.
@@ -1518,6 +1524,7 @@ zpool_open_func_win(void *arg)
 		char fullpath[MAX_PATH];
 		snprintf(fullpath, sizeof(fullpath), "%s%s", 
 			rn->rn_parent ? rn->rn_parent : "", rn->rn_name);
+		TraceWrite("FullPath :%s ThreadID:%lu [%s:%d]", fullpath, GetCurrentThreadId(),__func__,__LINE__);
 		fd = CreateFile(fullpath,
 			GENERIC_READ,
 			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -1532,8 +1539,8 @@ zpool_open_func_win(void *arg)
 
 		drive_len = GetFileDriveSize(fd);
 	}
-
 	DWORD type = GetFileType(fd);
+	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, GetCurrentThreadId(),__func__, __LINE__);
 	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	
 	type = GetDriveType(rn->rn_name);
@@ -1572,7 +1579,7 @@ zpool_open_func_win(void *arg)
 		(void)no_memory(rn->rn_hdl);
 		return;
 	}
-
+	TraceWrite("num_labels %d ThreadID:%lu [%s:%d]", num_labels, GetCurrentThreadId(),__func__, __LINE__);
 	if (num_labels == 0) {
 		CloseHandle(fd);
 		nvlist_free(config);
@@ -1715,6 +1722,7 @@ zpool_default_import_path[DEFAULT_IMPORT_PATH_SIZE] = {
 static nvlist_t *
 zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 {
+	TraceWrite("zpool_find_import_impl [%s:%d]", __func__, __LINE__);
 	int i, dirs = iarg->paths;
 	struct dirent *dp;
 	char path[MAXPATHLEN];
@@ -1879,9 +1887,10 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 				(void) taskq_dispatch(t, zpool_open_func, slice,
 			    TQ_SLEEP);
 #endif
+		TraceWrite("Going to wait for taskq thread to complete [%s:%d]", __func__, __LINE__);
 		taskq_wait(t);
 		taskq_destroy(t);
-
+		TraceWrite("All taskq operation completed [%s:%d]", __func__, __LINE__);
 		cookie = NULL;
 		while ((slice = avl_destroy_nodes(&slice_cache,
 		    &cookie)) != NULL) {
@@ -1971,6 +1980,7 @@ error:
 static nvlist_t *
 zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 {
+	TraceWrite("zpool_find_import_win started [%s:%d]", __func__, __LINE__);
 	int i, dirs = iarg->paths;
 	struct dirent *dp;
 	char path[MAXPATHLEN];
@@ -2032,6 +2042,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 		deviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
 		deviceIndex = 0;
 
+		TraceWrite("Before enumerating the devices [%s:%d]", __func__, __LINE__);
 		while (SetupDiEnumDeviceInterfaces(diskClassDevices,
 			NULL,
 			&diskClassDeviceInterfaceGuid,
@@ -2086,10 +2097,11 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				sizeof(STORAGE_DEVICE_NUMBER),
 				&bytesReturned,
 				NULL);
-
 			fprintf(stderr, "path '%s'\n and '\\\\?\\PhysicalDrive%d'\n", deviceInterfaceDetailData->DevicePath,
 				diskNumber.DeviceNumber); fflush(stderr);
 			snprintf(rdsk, MAXPATHLEN, "\\\\.\\PHYSICALDRIVE%d", diskNumber.DeviceNumber);
+			TraceWrite("path '%s' and '\\\\?\\PhysicalDrive%d' rdsk %s : [%s:%d]", deviceInterfaceDetailData->DevicePath,
+				diskNumber.DeviceNumber, rdsk,  __func__, __LINE__);
 
 			//CloseHandle(disk);
 
@@ -2107,7 +2119,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			partitions = (PDRIVE_LAYOUT_INFORMATION_EX)malloc(partitionsSize);
 			if (DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0, partitions, partitionsSize, &ior, NULL)) {
 				fprintf(stderr, "read partitions ok %d\n", partitions->PartitionCount); fflush(stderr);
-
+				TraceWrite(" Partion count :%d [%s:%d]", partitions->PartitionCount,__func__,__LINE__);
 				for (int i = 0; i < partitions->PartitionCount; i++) {
 					switch (partitions->PartitionEntry[i].PartitionStyle) {
 					case PARTITION_STYLE_MBR:
@@ -2115,12 +2127,20 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 							partitions->PartitionEntry[i].Mbr.PartitionType,
 							partitions->PartitionEntry[i].StartingOffset.QuadPart,
 							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
+						TraceWrite("mbr %d: type %x off 0x%llx len 0x%llx [%s:%d]", i,
+							partitions->PartitionEntry[i].Mbr.PartitionType,
+							partitions->PartitionEntry[i].StartingOffset.QuadPart,
+							partitions->PartitionEntry[i].PartitionLength.QuadPart,__func__,__LINE__);
 						break;
 					case PARTITION_STYLE_GPT:
 						fprintf(stderr, "    gpt %d: type %x off 0x%llx len 0x%llx\n", i,
 							partitions->PartitionEntry[i].Gpt.PartitionType,
 							partitions->PartitionEntry[i].StartingOffset.QuadPart,
 							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
+						TraceWrite("gpt %d: type %x off 0x%llx len 0x%llx [%s:%d]", i,
+							partitions->PartitionEntry[i].Gpt.PartitionType,
+							partitions->PartitionEntry[i].StartingOffset.QuadPart,
+							partitions->PartitionEntry[i].PartitionLength.QuadPart, __func__, __LINE__);
 						break;
 					}
 				}
@@ -2133,7 +2153,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 					// Do the lundman trick
 					snprintf(diskname, sizeof(diskname), "#%llu#%llu#%s",
 						0ULL, GetFileDriveSize(disk), deviceInterfaceDetailData->DevicePath);
-
+					TraceWrite("diskname::::%s [%s:%d]", diskname, __func__, __LINE__);
 					slice->rn_name = zfs_strdup(hdl, diskname);
 					slice->rn_avl = &slice_cache;
 					slice->rn_hdl = hdl;
@@ -2165,11 +2185,13 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			// 0x8410     "version" "name" "testpool" ZFS label
 			if (disk != INVALID_HANDLE_VALUE) {
 				fprintf(stderr, "asking libefi to read label\n"); fflush(stderr);
+				TraceWrite("asking libefi to read label [%s:%d]",__func__,__LINE__);
 				int error;
 				struct dk_gpt *vtoc;
 				error = efi_alloc_and_read(disk, &vtoc);
 				if (error >= 0) {
 					fprintf(stderr, "EFI read OK, max partitions %d\n", vtoc->efi_nparts); fflush(stderr);
+					TraceWrite("EFI read OK, max partitions %d [%s:%d]", vtoc->efi_nparts, __func__,__LINE__);
 					for (int i = 0; i < vtoc->efi_nparts; i++) {
 
 						if (vtoc->efi_parts[i].p_start == 0 &&
@@ -2177,6 +2199,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 
 						fprintf(stderr, "    part %d:  offset %llx:    len %llx:    tag: %x    name: '%s'\n", i, vtoc->efi_parts[i].p_start, vtoc->efi_parts[i].p_size,
 							vtoc->efi_parts[i].p_tag, vtoc->efi_parts[i].p_name); fflush(stderr);
+						TraceWrite("    part %d:  offset %llx:    len %llx:    tag: %x    name: '%s' [%s:%d] ", i, vtoc->efi_parts[i].p_start, vtoc->efi_parts[i].p_size,
+							vtoc->efi_parts[i].p_tag, vtoc->efi_parts[i].p_name, __func__,__LINE__);
 						if (vtoc->efi_parts[i].p_start != 0 &&
 							vtoc->efi_parts[i].p_size != 0 /* &&
 							(strstr(vtoc->efi_parts[i].p_name, "ZFS") != NULL || strstr(vtoc->efi_parts[i].p_name, "zfs") != NULL)*/) {
@@ -2200,10 +2224,11 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			}
 		} // while SetupDiEnumDeviceInterfaces
 
-
+		TraceWrite("After enumerating devices [%s:%d]", __func__, __LINE__);
 		/* Now lets iterate the partitions (volumes) */
 		HANDLE vol;
 		vol = FindFirstVolume(rdsk, sizeof(rdsk));
+		TraceWrite("Going to process all the volumes [%s:%d]", __func__, __LINE__);
 		while (vol != INVALID_HANDLE_VALUE) {
 
 			// If it ends with a \, we need to eat it.
@@ -2211,8 +2236,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			r = &rdsk[strlen(rdsk) - 1];
 			if (*r == '\\' || *r == '/')
 				*r = 0;
-
 			fprintf(stderr, "Processing volume '%s'\n", rdsk); fflush(stderr);
+			TraceWrite("Processing volume '%s' [%s:%d]", rdsk,__func__, __LINE__);
 
 				slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
 				slice->rn_name = zfs_strdup(hdl, rdsk);
@@ -2227,6 +2252,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			}
 		}
 
+		TraceWrite("After processing the Volumes [%s:%d]", __func__, __LINE__);
 
 		/*
 		* create a thread pool to do all of this in parallel;
@@ -2244,10 +2270,12 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				AVL_AFTER)))
 				(void) taskq_dispatch(t, zpool_open_func_win, slice,
 					TQ_SLEEP);
+		TraceWrite("Going to wait for taskq thread to complete all zpool_open_func_win [%s:%d]", __func__, __LINE__);
 		taskq_wait(t);
 		taskq_destroy(t);
-
+		TraceWrite("All taskq zpool_open_func_win operation completed [%s:%d]", __func__, __LINE__);
 		cookie = NULL;
+
 		while ((slice = avl_destroy_nodes(&slice_cache,
 			&cookie)) != NULL) {
 			if (slice->rn_config != NULL && !config_failed) {
@@ -2465,6 +2493,7 @@ zpool_find_import_cached(libzfs_handle_t *hdl, const char *cachefile,
 static int
 name_or_guid_exists(zpool_handle_t *zhp, void *data)
 {
+	TraceWrite("name_or_guid_exists function started [%s:%d]", __func__, __LINE__);
 	importargs_t *import = data;
 	int found = 0;
 
@@ -2491,6 +2520,7 @@ name_or_guid_exists(zpool_handle_t *zhp, void *data)
 nvlist_t *
 zpool_search_import(libzfs_handle_t *hdl, importargs_t *import)
 {
+	TraceWrite("zpool_search_import function called [%s:%d]",__func__,__LINE__);
 	verify(import->poolname == NULL || import->guid == 0);
 
 	if (import->unique)
@@ -2526,6 +2556,7 @@ int
 zpool_tryimport(libzfs_handle_t *hdl, char *target, nvlist_t **configp,
     importargs_t *args)
 {
+	TraceWrite("zpool_tryimport function started [%s:%d]", __func__, __LINE__);
 	nvlist_t *pools;
 	nvlist_t *match = NULL;
 	nvlist_t *config = NULL;
