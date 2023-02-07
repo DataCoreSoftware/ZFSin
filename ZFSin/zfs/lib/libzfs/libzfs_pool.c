@@ -65,6 +65,9 @@ typedef struct prop_flags {
 	int import:1;	/* Validate property on import */
 } prop_flags_t;
 
+extern int TraceWrite(const char* fmt, ...);
+
+/*
 /*
  * ====================================================================
  *   zpool property functions
@@ -1129,6 +1132,7 @@ zpool_name_valid(libzfs_handle_t *hdl, boolean_t isopen, const char *pool)
 zpool_handle_t *
 zpool_open_canfail(libzfs_handle_t *hdl, const char *pool)
 {
+	TraceWrite("zpool_open_canfail function started [%s:%d]", __func__, __LINE__);
 	zpool_handle_t *zhp;
 	boolean_t missing;
 
@@ -1148,6 +1152,7 @@ zpool_open_canfail(libzfs_handle_t *hdl, const char *pool)
 	zhp->zpool_hdl = hdl;
 	(void) strlcpy(zhp->zpool_name, pool, sizeof (zhp->zpool_name));
 
+	TraceWrite("Going to call zpool_refresh_stats [%s:d]", __func__, __LINE__);
 	if (zpool_refresh_stats(zhp, &missing) != 0) {
 		zpool_close(zhp);
 		return (NULL);
@@ -1946,6 +1951,7 @@ int
 zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
     nvlist_t *props, int flags)
 {
+	TraceWrite("zpool_import_props started [%s:%d]",__func__,__LINE__);
 	zfs_cmd_t zc = {"\0"};
 	zpool_load_policy_t policy;
 	nvlist_t *nv = NULL;
@@ -2005,6 +2011,7 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 	}
 
 	zc.zc_cookie = flags;
+	TraceWrite("Going to call ZFS_IOC_POOL_IMPORT IOCTL [%s:%d]",__func__,__LINE__);
 	while ((ret = zfs_ioctl(hdl, ZFS_IOC_POOL_IMPORT, &zc)) != 0 &&
 	    errno == ENOMEM) {
 		if (zcmd_expand_dst_nvlist(hdl, &zc) != 0) {
@@ -2012,6 +2019,7 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 			return (-1);
 		}
 	}
+	TraceWrite("After the IOCL call [%s:%d]",__func__,__LINE__);
 	if (ret != 0)
 		error = errno;
 

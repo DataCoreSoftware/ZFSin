@@ -56,6 +56,8 @@ typedef struct config_node {
 	uu_avl_node_t	cn_avl;
 } config_node_t;
 
+extern int TraceWrite(const char* fmt, ...);
+
 /* ARGSUSED */
 static int
 config_node_compare(const void *a, const void *b, void *unused)
@@ -233,7 +235,7 @@ nvlist_t *
 zpool_get_features(zpool_handle_t *zhp)
 {
 	nvlist_t *config, *features;
-
+	TraceWrite("zpool_get_features started");
 	config = zpool_get_config(zhp, NULL);
 
 	if (config == NULL || !nvlist_exists(config,
@@ -265,6 +267,7 @@ zpool_get_features(zpool_handle_t *zhp)
 int
 zpool_refresh_stats(zpool_handle_t *zhp, boolean_t *missing)
 {
+	TraceWrite("zpool_refresh_stats started [%s:%d]",__func__,__LINE__);
 	zfs_cmd_t zc = {"\0"};
 
 	int error;
@@ -282,6 +285,7 @@ zpool_refresh_stats(zpool_handle_t *zhp, boolean_t *missing)
 		return (-1);
 
 	for (;;) {
+		TraceWrite("Calling ZFS_IOC_POOL_STATS IOCTL [%s:%d]",__func__,__LINE__);
 		if (zfs_ioctl(zhp->zpool_hdl, ZFS_IOC_POOL_STATS,
 		    &zc) == 0) {
 			/*

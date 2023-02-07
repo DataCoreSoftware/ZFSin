@@ -122,6 +122,64 @@ static int zpool_do_sync(int, char **);
 
 static int zpool_do_version(int, char **);
 
+FILE* filehandle;
+int TraceInit()
+{
+	filehandle = fopen("ZFSDebugLog.txt", "a");
+	if (filehandle == NULL)
+	{
+		DWORD err = GetLastError();
+		printf(" Failed to open the ZFSDebugLog :%d", err);
+		time_t rawtime;
+		struct tm* info;
+		time(&rawtime);
+		info = localtime(&rawtime);
+		char timeString[30];
+		strftime(timeString, sizeof(timeString), "%b_%d_%Y_%H_%M_%S", info);
+		//char src[] = "ZFSDebugLog";
+		char dest[100] = "ZFSDebugLog_";
+
+		strcat(dest, timeString);
+		strcat(dest, ".txt");
+		printf(" The path %s", dest);
+		filehandle = fopen(dest, "a");
+		if (filehandle == NULL)
+		{
+			DWORD err = GetLastError();
+			printf(" Still Failed to open the ZFSDebugLog :%d", err);
+		}
+	}
+	return 0;
+}
+
+int TraceClose()
+{
+	if (filehandle != NULL)
+		fclose(filehandle);
+	return 0;
+}
+kmutex_t log_lock;
+
+int TraceWrite(const char* fmt, ...)
+{
+	char buffer[1024];
+	mutex_enter(&log_lock);
+	va_list ap;
+	va_start(ap, fmt);
+	(void)vsnprintf(buffer, sizeof(buffer),
+		fmt, ap);
+	va_end(ap);
+	time_t rawtime;
+	struct tm* info;
+	time(&rawtime);
+	info = localtime(&rawtime);
+	char timeString[30];  
+	strftime(timeString, sizeof(timeString), "%b-%d-%Y %H:%M:%S", info);
+	if (filehandle != NULL)
+		fprintf(filehandle, "%s %s\n", timeString, buffer);
+	mutex_exit(&log_lock);
+}
+
 /*
  * These libumem hooks provide a reasonable set of defaults for the allocator's
  * debugging facilities.
@@ -2616,6 +2674,8 @@ static int
 do_import(nvlist_t *config, const char *newname, const char *mntopts,
     nvlist_t *props, int flags)
 {
+	printf("do_import\n");
+	TraceWrite("Do import called [%s:%d]",__func__,__LINE__);
 	int ret = 0;
 	zpool_handle_t *zhp;
 	char *name;
@@ -2845,6 +2905,8 @@ zpool_do_checkpoint(int argc, char **argv)
 int
 zpool_do_import(int argc, char **argv)
 {
+	printf("zpool_do_import\n");
+	TraceWrite("zpool_do_import started [%s:%d]",__func__,__LINE__);
 	char **searchdirs = NULL;
 	char *env, *envdup = NULL;
 	int nsearch = 0;
@@ -3150,10 +3212,11 @@ zpool_do_import(int argc, char **argv)
 	 * therefore necessary to initialize this functionality for the
 	 * duration of the zpool_search_import() function.
 	 */
+	TraceWrite("Going to call zpool_search_import [%s:%d]",__func__,__LINE__);
 	thread_init();
 	pools = zpool_search_import(g_zfs, &idata);
 	thread_fini();
-
+	printf("after zpool_search_import\n");
 	if (pools != NULL && idata.exists &&
 	    (argc == 1 || strcmp(argv[0], argv[1]) == 0)) {
 		(void) fprintf(stderr, gettext("cannot import '%s': "
@@ -3198,6 +3261,7 @@ zpool_do_import(int argc, char **argv)
 	err = 0;
 	elem = NULL;
 	first = B_TRUE;
+	TraceWrite(" Going to lookup config from nvlist [%s:%d]",__func__,__LINE__);
 	while ((elem = nvlist_next_nvpair(pools, elem)) != NULL) {
 
 		verify(nvpair_value_nvlist(elem, &config) == 0);
@@ -3257,7 +3321,7 @@ zpool_do_import(int argc, char **argv)
 				found_config = config;
 		}
 	}
-
+	TraceWrite("After nvlist lookup [%s:%d]",__func__,__LINE__);
 	/*
 	 * If we were searching for a specific pool, verify that we found a
 	 * pool, and then do the import.
@@ -3268,6 +3332,7 @@ zpool_do_import(int argc, char **argv)
 			    "no such pool available\n"), argv[0]);
 			err = B_TRUE;
 		} else {
+			TraceWrite("Going to call do_import [%s:%d]",__func__,__LINE__);
 			err |= do_import(found_config, argc == 1 ? NULL :
 			    argv[1], mntopts, props, flags);
 		}
@@ -8749,7 +8814,9 @@ main(int argc, char **argv)
 
 	(void) setlocale(LC_ALL, "");
 	//(void) textdomain(TEXT_DOMAIN);
-
+	mutex_init(&log_lock, NULL, MUTEX_DEFAULT, NULL);
+	TraceInit();
+	TraceWrite("Zpool main funct started [%s:%d]",__func__,__LINE__);
 	dprintf_setup(&argc, argv);
 
 	opterr = 0;
@@ -8823,6 +8890,8 @@ main(int argc, char **argv)
 		(void) printf("dumping core by request\n");
 		abort();
 	}
-
+	TraceWrite("Zpool main funct ended [%s:%d]", __func__, __LINE__);
+	TraceClose();
+	mutex_destroy(&log_lock);
 	return (ret);
 }

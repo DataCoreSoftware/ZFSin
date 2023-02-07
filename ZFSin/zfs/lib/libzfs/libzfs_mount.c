@@ -1661,6 +1661,7 @@ libzfs_dataset_cmp(const void *a, const void *b)
 int
 zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags)
 {
+	TraceWrite("zpool_enable_datasets function started flags:%d [%s:%d]", flags, __func__, __LINE__);
 	get_all_cb_t cb = { 0 };
 	libzfs_handle_t *hdl = zhp->zpool_hdl;
 	zfs_handle_t *zfsp;
@@ -1669,6 +1670,7 @@ zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags)
 	/*
 	 * Gather all non-snap datasets within the pool.
 	 */
+	TraceWrite("Going to open pool:%s, Type ZFS_TYPE_DATASET [%s:%d]", zhp->zpool_name, __func__, __LINE__);
 	if ((zfsp = zfs_open(hdl, zhp->zpool_name, ZFS_TYPE_DATASET)) == NULL)
 		goto out;
 
