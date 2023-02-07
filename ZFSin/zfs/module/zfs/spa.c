@@ -3138,6 +3138,7 @@ spa_ld_trusted_config(spa_t *spa, spa_import_type_t type,
 	int error = 0, copy_error;
 	uint64_t healthy_tvds, healthy_tvds_mos;
 	uint64_t mos_config_txg;
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
 
 	if (spa_dir_prop(spa, DMU_POOL_CONFIG, &spa->spa_config_object, B_TRUE)
 	    != 0)
@@ -3232,6 +3233,8 @@ spa_ld_trusted_config(spa_t *spa, spa_import_type_t type,
 	 */
 	spa->spa_trust_config = B_TRUE;
 
+	dprintf("%s:%d: [Dbg] call spa_ld_open_vdevs().\n", __func__, __LINE__);
+
 	/*
 	 * Open and validate the new vdev tree
 	 */
@@ -3239,6 +3242,7 @@ spa_ld_trusted_config(spa_t *spa, spa_import_type_t type,
 	if (error != 0)
 		return (error);
 
+	dprintf("%s:%d: [Dbg] call spa_ld_validate_vdevs().\n", __func__, __LINE__);
 	error = spa_ld_validate_vdevs(spa);
 	if (error != 0)
 		return (error);
@@ -3278,6 +3282,8 @@ spa_ld_trusted_config(spa_t *spa, spa_import_type_t type,
 		}
 	}
 
+	dprintf("%s:%d: [Dbg] call spa_check_for_missing_logs().\n", __func__, __LINE__);
+
 	error = spa_check_for_missing_logs(spa);
 	if (error != 0)
 		return (spa_vdev_err(rvd, VDEV_AUX_BAD_GUID_SUM, ENXIO));
@@ -3290,6 +3296,8 @@ spa_ld_trusted_config(spa_t *spa, spa_import_type_t type,
 		return (spa_vdev_err(rvd, VDEV_AUX_BAD_GUID_SUM,
 		    ENXIO));
 	}
+
+	dprintf("%s:%d: [Dbg] func returned 0\n", __func__, __LINE__);
 
 	return (0);
 }
@@ -3894,6 +3902,7 @@ static int
 spa_ld_mos_init(spa_t *spa, spa_import_type_t type)
 {
 	int error = 0;
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
 
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 	ASSERT(spa->spa_config_source != SPA_CONFIG_SRC_NONE);
@@ -3923,6 +3932,8 @@ spa_ld_mos_init(spa_t *spa, spa_import_type_t type)
 	 * based on the success of those operations. After this we'll be ready
 	 * to read from the vdevs.
 	 */
+	dprintf("%s:%d: [Dbg] call spa_ld_open_vdevs.\n", __func__, __LINE__);
+
 	error = spa_ld_open_vdevs(spa);
 	if (error != 0)
 		return (error);
@@ -3935,6 +3946,7 @@ spa_ld_mos_init(spa_t *spa, spa_import_type_t type)
 	 * validation for now.
 	 */
 	if (type != SPA_IMPORT_ASSEMBLE) {
+		dprintf("%s:%d: [Dbg] call spa_ld_validate_vdevs().\n", __func__, __LINE__);
 		error = spa_ld_validate_vdevs(spa);
 		if (error != 0)
 			return (error);
@@ -3947,6 +3959,8 @@ spa_ld_mos_init(spa_t *spa, spa_import_type_t type)
 	 * the vdev label with the best uberblock and verify that our version
 	 * of zfs supports them all.
 	 */
+	dprintf("%s:%d: [Dbg] call spa_ld_select_uberblock().\n", __func__, __LINE__);
+
 	error = spa_ld_select_uberblock(spa, type);
 	if (error != 0)
 		return (error);
@@ -3956,6 +3970,8 @@ spa_ld_mos_init(spa_t *spa, spa_import_type_t type)
 	 * blkptr. This blkptr points to the latest version of the MOS and will
 	 * allow us to read its contents.
 	 */
+	dprintf("%s:%d: [Dbg] call spa_ld_open_rootbp().\n", __func__, __LINE__);
+
 	error = spa_ld_open_rootbp(spa);
 	if (error != 0)
 		return (error);
@@ -4060,6 +4076,7 @@ spa_ld_mos_with_trusted_config(spa_t *spa, spa_import_type_t type,
     boolean_t *update_config_cache)
 {
 	int error;
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
 
 	/*
 	 * Parse the config for pool, open and validate vdevs,
@@ -4067,8 +4084,10 @@ spa_ld_mos_with_trusted_config(spa_t *spa, spa_import_type_t type,
 	 * the MOS.
 	 */
 	error = spa_ld_mos_init(spa, type);
-	if (error != 0)
+	if (error != 0) {
+		dprintf("%s:%d: [Dbg] spa_ld_mos_init() returned %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 
 	/*
 	 * Retrieve the trusted config stored in the MOS and use it to create
@@ -4086,16 +4105,23 @@ spa_ld_mos_with_trusted_config(spa_t *spa, spa_import_type_t type,
 		spa_ld_prepare_for_reload(spa);
 		spa_load_note(spa, "RELOADING");
 		error = spa_ld_mos_init(spa, type);
-		if (error != 0)
+		if (error != 0) {
+			dprintf("%s:%d: [Dbg] spa_ld_mos_init() returned %d\n", __func__, __LINE__, error);
 			return (error);
+		}
 
 		error = spa_ld_trusted_config(spa, type, B_TRUE);
-		if (error != 0)
+		if (error != 0) {
+			dprintf("%s:%d: [Dbg] spa_ld_trusted_config() returned %d\n", __func__, __LINE__, error);
 			return (error);
+		}
 
 	} else if (error != 0) {
+		dprintf("%s:%d: [Dbg] spa_ld_trusted_config() returned %d\n", __func__, __LINE__, error);
 		return (error);
 	}
+
+	dprintf("%s:%d: [Dbg] spa_ld_trusted_config() returned 0\n", __func__, __LINE__);
 
 	return (0);
 }
@@ -4122,8 +4148,10 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	spa_load_note(spa, "LOADING");
 
 	error = spa_ld_mos_with_trusted_config(spa, type, &update_config_cache);
-	if (error != 0)
+	if (error != 0) {
+		dprintf("%s:%d: [Dbg] spa_ld_mos_with_trusted_config() returned %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 
 	/*
 	 * If we are rewinding to the checkpoint then we need to repeat
