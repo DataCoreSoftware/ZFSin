@@ -128,8 +128,7 @@ int TraceInit()
 	filehandle = fopen("ZFSDebugLog.txt", "a");
 	if (filehandle == NULL)
 	{
-		DWORD err = GetLastError();
-		printf(" Failed to open the ZFSDebugLog :%d", err);
+		printf(" Failed to open the ZFSDebugLog :%d", errno);
 		time_t rawtime;
 		struct tm* info;
 		time(&rawtime);

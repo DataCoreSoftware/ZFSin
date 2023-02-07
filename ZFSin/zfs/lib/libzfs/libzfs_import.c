@@ -1022,7 +1022,8 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 int
 zpool_read_label_win(HANDLE h, off_t offset, uint64_t len, nvlist_t **config, int *num_labels)
 {
-	TraceWrite(" zpool_read_label_win function started ThreadID:%lu [%s:%d]", GetCurrentThreadId(),__func__,__LINE__);
+	DWORD threadID = GetCurrentThreadId();
+	TraceWrite(" zpool_read_label_win function started ThreadID:%lu [%s:%d]", threadID,__func__,__LINE__);
 	int l, count = 0;
 	vdev_label_t *label;
 	nvlist_t *expected_config = NULL;
@@ -1471,11 +1472,12 @@ zpool_open_func_win(void *arg)
 	uint64_t offset = 0;
 	uint64_t len = 0;
 	uint64_t drive_len;
+	DWORD threadID = GetCurrentThreadId();
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
-	TraceWrite("zpool_open_func_win started ThreadID:%lu [%s:%d]",GetCurrentThreadId(),__func__,__LINE__);
+	TraceWrite("zpool_open_func_win started ThreadID:%lu [%s:%d]", threadID,__func__,__LINE__);
 	if (rn->rn_nozpool)
 		return;
-	TraceWrite("rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name,GetCurrentThreadId(),__func__,__LINE__);
+	TraceWrite("rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name, threadID,__func__,__LINE__);
 	/*
 	* Skip devices with well known prefixes there can be side effects
 	* when opening devices which need to be avoided.
@@ -1524,7 +1526,7 @@ zpool_open_func_win(void *arg)
 		char fullpath[MAX_PATH];
 		snprintf(fullpath, sizeof(fullpath), "%s%s", 
 			rn->rn_parent ? rn->rn_parent : "", rn->rn_name);
-		TraceWrite("FullPath :%s ThreadID:%lu [%s:%d]", fullpath, GetCurrentThreadId(),__func__,__LINE__);
+		TraceWrite("FullPath :%s ThreadID:%lu [%s:%d]", fullpath, threadID,__func__,__LINE__);
 		fd = CreateFile(fullpath,
 			GENERIC_READ,
 			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -1540,7 +1542,7 @@ zpool_open_func_win(void *arg)
 		drive_len = GetFileDriveSize(fd);
 	}
 	DWORD type = GetFileType(fd);
-	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, GetCurrentThreadId(),__func__, __LINE__);
+	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, threadID,__func__, __LINE__);
 	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	
 	type = GetDriveType(rn->rn_name);
@@ -1579,7 +1581,7 @@ zpool_open_func_win(void *arg)
 		(void)no_memory(rn->rn_hdl);
 		return;
 	}
-	TraceWrite("num_labels %d ThreadID:%lu [%s:%d]", num_labels, GetCurrentThreadId(),__func__, __LINE__);
+	TraceWrite("num_labels %d ThreadID:%lu [%s:%d]", num_labels, threadID,__func__, __LINE__);
 	if (num_labels == 0) {
 		CloseHandle(fd);
 		nvlist_free(config);
