@@ -2368,9 +2368,12 @@ zfs_ioc_pool_stats(zfs_cmd_t *zc)
 	int error;
 	int ret = 0;
 
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
+
 	error = spa_get_stats(zc->zc_name, &config, zc->zc_value,
 						  sizeof (zc->zc_value));
 	if (config != NULL) {
+		//dprintf("%s:%d: [Dbg] spa get stats success.\n", __func__, __LINE__);
 		ret = put_nvlist(zc, config);
 		nvlist_free(config);
 
@@ -2381,8 +2384,11 @@ zfs_ioc_pool_stats(zfs_cmd_t *zc)
 		 */
 		zc->zc_cookie = error;
 	} else {
+		dprintf("%s:%d: [Dbg] failed to get spa stats.\n", __func__, __LINE__);
 		ret = error;
 	}
+
+	dprintf("%s:%d: [Dbg] func exit. ret: %d\n", __func__, __LINE__, ret);
 
 	return (ret);
 }
@@ -2397,19 +2403,27 @@ zfs_ioc_pool_tryimport(zfs_cmd_t *zc)
 	nvlist_t *tryconfig, *config = NULL;
 	int error;
 
+	dprintf("%s:%d: [Dbg] func enter\n", __func__, __LINE__);
+
 	if ((error = get_nvlist(zc->zc_nvlist_conf, zc->zc_nvlist_conf_size,
-							zc->zc_iflags, &tryconfig)) != 0)
+		zc->zc_iflags, &tryconfig)) != 0) {
+		dprintf("%s:%d: [Dbg] Returning %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 
 	config = spa_tryimport(tryconfig);
 
 	nvlist_free(tryconfig);
 
-	if (config == NULL)
+	if (config == NULL) {
+		dprintf("%s:%d: [Dbg] Returning %d\n", __func__, __LINE__, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	error = put_nvlist(zc, config);
 	nvlist_free(config);
+
+	dprintf("%s:%d: [Dbg] Returning %d\n", __func__, __LINE__, error);
 
 	return (error);
 }
@@ -8200,7 +8214,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 #ifdef illumos
 	ASSERT3U(getmajor(dev), ==, ddi_driver_major(zfs_dip));
 #endif
-	TraceEvent(5, "[zfs] got ioctl 0x%lx (0x%lx)\n", vecnum, (vecnum>>2)+0x800);
+	TraceEvent(4, "[zfsdev_ioctl] got ioctl cmd: %d 0x%lx (0x%lx)\n", cmd, vecnum, (vecnum>>2)+0x800);
 
 	if (vecnum >= sizeof (zfs_ioc_vec) / sizeof (zfs_ioc_vec[0])) {
 		dprintf("ZFS: ioctl err 2\n");
@@ -8330,6 +8344,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 			}
 		}
 
+		//TraceEvent(4, "calling new-style zfs ioctl func\n");
 		outnvl = fnvlist_alloc();
 		error = vec->zvec_func(zc->zc_name, innvl, outnvl);
 
@@ -8416,8 +8431,8 @@ end:
 	if (arg)
 		((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OutbufLen is == zfs_cmd_t
 
-	if (error)
-		dprintf("ioctl out result %d\n", error);
+	//if (error)
+		dprintf("[zfsdev_ioctl] cmd:%d out result  %d\n", cmd, error);
 
 	return STATUS_SUCCESS; // error;
 }

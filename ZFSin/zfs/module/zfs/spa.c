@@ -2444,6 +2444,8 @@ spa_load(spa_t *spa, spa_load_state_t state, spa_import_type_t type)
 	char *ereport = FM_EREPORT_ZFS_POOL;
 	int error;
 
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
+
 	spa->spa_load_state = state;
 
 	gethrestime(&spa->spa_loaded_ts);
@@ -2453,6 +2455,7 @@ spa_load(spa_t *spa, spa_load_state_t state, spa_import_type_t type)
 	 * Don't count references from objsets that are already closed
 	 * and are making their way through the eviction process.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_evicting_os_wait().\n", __func__, __LINE__);
 	spa_evicting_os_wait(spa);
 	spa->spa_minref = zfs_refcount_count(&spa->spa_refcount);
 	if (error) {
@@ -2466,6 +2469,8 @@ spa_load(spa_t *spa, spa_load_state_t state, spa_import_type_t type)
 	}
 	spa->spa_load_state = error ? SPA_LOAD_ERROR : SPA_LOAD_NONE;
 	spa->spa_ena = 0;
+
+	dprintf("%s:%d: [Dbg] func returning %d\n", __func__, __LINE__, error);
 
 	return (error);
 }
@@ -3726,6 +3731,7 @@ spa_ld_load_dedup_tables(spa_t *spa)
 	int error = 0;
 	vdev_t *rvd = spa->spa_root_vdev;
 
+
 	error = ddt_load(spa);
 	if (error != 0) {
 		spa_load_failed(spa, "ddt_load failed [error=%d]", error);
@@ -4111,6 +4117,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 	ASSERT(spa->spa_config_source != SPA_CONFIG_SRC_NONE);
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
 
 	spa_load_note(spa, "LOADING");
 
@@ -4137,6 +4144,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 		 * pool is imported as writeable we also write the checkpoint
 		 * uberblock to the labels, making the rewind permanent.
 		 */
+		dprintf("%s:%d: [Dbg] calling spa_ld_checkpoint_rewind().\n", __func__, __LINE__);
 		error = spa_ld_checkpoint_rewind(spa);
 		if (error != 0)
 			return (error);
@@ -4155,6 +4163,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	/*
 	 * Retrieve the checkpoint txg if the pool has a checkpoint.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_read_checkpoint_txg().\n", __func__, __LINE__);
 	error = spa_ld_read_checkpoint_txg(spa);
 	if (error != 0)
 		return (error);
@@ -4167,6 +4176,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * initiated. Otherwise we could be reading from indirect vdevs before
 	 * we have loaded their mappings.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_open_indirect_vdev_metadata().\n", __func__, __LINE__);
 	error = spa_ld_open_indirect_vdev_metadata(spa);
 	if (error != 0)
 		return (error);
@@ -4175,6 +4185,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * Retrieve the full list of active features from the MOS and check if
 	 * they are all supported.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_check_features().\n", __func__, __LINE__);
 	error = spa_ld_check_features(spa, &missing_feat_write);
 	if (error != 0)
 		return (error);
@@ -4183,6 +4194,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * Load several special directories from the MOS needed by the dsl_pool
 	 * layer.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_load_special_directories().\n", __func__, __LINE__);
 	error = spa_ld_load_special_directories(spa);
 	if (error != 0)
 		return (error);
@@ -4190,6 +4202,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	/*
 	 * Retrieve pool properties from the MOS.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_get_props().\n", __func__, __LINE__);
 	error = spa_ld_get_props(spa);
 	if (error != 0)
 		return (error);
@@ -4198,6 +4211,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * Retrieve the list of auxiliary devices - cache devices and spares -
 	 * and open them.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_open_aux_vdevs().\n", __func__, __LINE__);
 	error = spa_ld_open_aux_vdevs(spa, type);
 	if (error != 0)
 		return (error);
@@ -4206,10 +4220,13 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * Load the metadata for all vdevs. Also check if unopenable devices
 	 * should be autoreplaced.
 	 */
+
+	dprintf("%s:%d: [Dbg] calling spa_ld_load_vdev_metadata().\n", __func__, __LINE__);
 	error = spa_ld_load_vdev_metadata(spa);
 	if (error != 0)
 		return (error);
 
+	dprintf("%s:%d: [Dbg] calling spa_ld_load_dedup_tables().\n", __func__, __LINE__);
 	error = spa_ld_load_dedup_tables(spa);
 	if (error != 0)
 		return (error);
@@ -4218,6 +4235,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * Verify the logs now to make sure we don't have any unexpected errors
 	 * when we claim log blocks later.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_verify_logs().\n", __func__, __LINE__);
 	error = spa_ld_verify_logs(spa, type, ereport);
 	if (error != 0)
 		return (error);
@@ -4230,6 +4248,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 		 * read-only mode but not read-write mode. We now have enough
 		 * information and can return to userland.
 		 */
+		dprintf("%s:%d: [Dbg] calling spa_vdev_err().\n", __func__, __LINE__);
 		return (spa_vdev_err(spa->spa_root_vdev, VDEV_AUX_UNSUP_FEAT,
 		    ENOTSUP));
 	}
@@ -4239,6 +4258,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * state. When performing an extreme rewind, we verify the whole pool,
 	 * which can take a very long time.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_ld_verify_pool_data().\n", __func__, __LINE__);
 	error = spa_ld_verify_pool_data(spa);
 	if (error != 0)
 		return (error);
@@ -4248,6 +4268,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 	 * we write anything to the pool because we'd need to update the space
 	 * accounting using the deflated sizes.
 	 */
+	dprintf("%s:%d: [Dbg] calling spa_update_dspace().\n", __func__, __LINE__);
 	spa_update_dspace(spa);
 
 	/*
@@ -4274,14 +4295,20 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 		/*
 		 * Traverse the ZIL and claim all blocks.
 		 */
+
+		dprintf("%s:%d: [Dbg] calling spa_ld_claim_log_blocks().\n", __func__, __LINE__);
 		spa_ld_claim_log_blocks(spa);
 
 		/*
 		 * Kick-off the syncing thread.
 		 */
 		spa->spa_sync_on = B_TRUE;
+		dprintf("%s:%d: [Dbg] calling txg_sync_start().\n", __func__, __LINE__);
+
 		txg_sync_start(spa->spa_dsl_pool);
 		mmp_thread_start(spa);
+
+		dprintf("%s:%d: [Dbg] calling txg_wait_synced().\n", __func__, __LINE__);
 
 		/*
 		 * Wait for all claims to sync.  We sync up to the highest
@@ -4312,6 +4339,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 		 * Log the fact that we booted up (so that we can detect if
 		 * we rebooted in the middle of an operation).
 		 */
+		dprintf("%s:%d: [Dbg] calling spa_history_log_version().\n", __func__, __LINE__);
 		spa_history_log_version(spa, "open");
 
 		/*
@@ -4324,6 +4352,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 		 * Clean up any stale temporary dataset userrefs.
 		 */
 		dsl_pool_clean_tmp_userrefs(spa->spa_dsl_pool);
+		dprintf("%s:%d: [Dbg] calling spa_restart_removal().\n", __func__, __LINE__);
 
 		spa_restart_removal(spa);
 
@@ -4331,12 +4360,16 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 
 		spa_config_enter(spa, SCL_CONFIG, FTAG, RW_READER);
 		vdev_initialize_restart(spa->spa_root_vdev);
+		dprintf("%s:%d: [Dbg] calling vdev_trim_restart().\n", __func__, __LINE__);
+
 		vdev_trim_restart(spa->spa_root_vdev);
 		vdev_autotrim_restart(spa);
+		dprintf("%s:%d: [Dbg] calling spa_config_exit().\n", __func__, __LINE__);
 		spa_config_exit(spa, SCL_CONFIG, FTAG);
 	}
 
 	spa_load_note(spa, "LOADED");
+	dprintf("%s:%d: [Dbg] func exit.\n", __func__, __LINE__);
 
 	return (0);
 }
@@ -4388,10 +4421,11 @@ spa_load_best(spa_t *spa, spa_load_state_t state, uint64_t max_request,
 		if (max_request != UINT64_MAX)
 			spa->spa_extreme_rewind = B_TRUE;
 	}
+	dprintf("%s:%d: [Dbg] loading spa.\n", __func__, __LINE__);
 
 	load_error = rewind_error = spa_load(spa, state, SPA_IMPORT_EXISTING);
 	if (load_error == 0) {
-		dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
+		dprintf("%s:%d: spa_load error Returning 0\n", __func__, __LINE__);
 		return (0);
 	}
 	if (load_error == ZFS_ERR_NO_CHECKPOINT) {
@@ -4405,8 +4439,12 @@ spa_load_best(spa_t *spa, spa_load_state_t state, uint64_t max_request,
 		return (load_error);
 	}
 
-	if (spa->spa_root_vdev != NULL)
+	if (spa->spa_root_vdev != NULL) {
+		dprintf("%s:%d: [Dbg] spa config generate\n", __func__, __LINE__);
 		config = spa_config_generate(spa, NULL, -1ULL, B_TRUE);
+		dprintf("%s:%d: [Dbg] spa config generate complete\n", __func__, __LINE__);
+
+	}
 
 	spa->spa_last_ubsync_txg = spa->spa_uberblock.ub_txg;
 	spa->spa_last_ubsync_txg_ts = spa->spa_uberblock.ub_timestamp;
@@ -4444,6 +4482,7 @@ spa_load_best(spa_t *spa, spa_load_state_t state, uint64_t max_request,
 		if (spa->spa_load_max_txg < safe_rewind_txg)
 			spa->spa_extreme_rewind = B_TRUE;
 		rewind_error = spa_load_retry(spa, state);
+		dprintf("%s:%d: [Dbg] retry loading spa. ret:%d\n", __func__, __LINE__, rewind_error);
 	}
 
 	spa->spa_extreme_rewind = B_FALSE;
@@ -4496,7 +4535,7 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 
 	*spapp = NULL;
 
-	TraceEvent(8, "%s:%d: pool = %s\n", __func__, __LINE__, (pool ? pool : "NULL"));
+	TraceEvent(4, "%s:%d: pool = %s\n", __func__, __LINE__, (pool ? pool : "NULL"));
 
 	/*
 	 * As disgusting as this is, we need to support recursive calls to this
@@ -4526,24 +4565,29 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 
 #endif
 
-
+	//dprintf("%s:%d: [Dbg] spa lookup\n", __func__, __LINE__);
 
 	if ((spa = spa_lookup(pool)) == NULL) {
 		if (locked)
 			mutex_exit(&spa_namespace_lock);
-		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ENOENT);
+		dprintf("%s:%d: [Dbg] spa lookup failed. Returning %d\n", __func__, __LINE__, ENOENT);
 		return (SET_ERROR(ENOENT));
 	}
+	
+	//dprintf("%s:%d: [Dbg] spa lookup success\n", __func__, __LINE__);
 
 	if (spa->spa_state == POOL_STATE_UNINITIALIZED) {
 		zpool_load_policy_t policy;
 
 		firstopen = B_TRUE;
+		dprintf("%s:%d: [Dbg] Get zpool load policy\n", __func__, __LINE__);
 
 		zpool_get_load_policy(nvpolicy ? nvpolicy : spa->spa_config,
 		    &policy);
 		if (policy.zlp_rewind & ZPOOL_DO_REWIND)
 			state = SPA_LOAD_RECOVER;
+
+		dprintf("%s:%d: [Dbg] Activate spa.\n", __func__, __LINE__);
 
 		spa_activate(spa, spa_mode_global);
 
@@ -4563,13 +4607,17 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 			 * this is the case, the config cache is out of sync and
 			 * we should remove the pool from the namespace.
 			 */
+			dprintf("%s:%d: [Dbg] spa open failed.Unload spa,error case EBADF\n", __func__, __LINE__);
+
 			spa_unload(spa);
 			spa_deactivate(spa);
+			dprintf("%s:%d: [Dbg] spa write cache file.\n", __func__, __LINE__);
+
 			spa_write_cachefile(spa, B_TRUE, B_TRUE);
 			spa_remove(spa);
 			if (locked)
 				mutex_exit(&spa_namespace_lock);
-			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ENOENT);
+			dprintf("%s:%d: spa load failed.Returning %d\n", __func__, __LINE__, ENOENT);
 			return (SET_ERROR(ENOENT));
 		}
 
@@ -4586,6 +4634,8 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 				    ZPOOL_CONFIG_LOAD_INFO,
 				    spa->spa_load_info) == 0);
 			}
+			dprintf("%s:%d: [Dbg] spa open failed.Unload spa.\n", __func__, __LINE__);
+
 			spa_unload(spa);
 			spa_deactivate(spa);
 			spa->spa_last_open_failed = error;
@@ -4599,9 +4649,11 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 
 	spa_open_ref(spa, tag);
 
-	if (config != NULL)
+	if (config != NULL) {
+		dprintf("%s:%d: [Dbg] spa  config generate.\n", __func__, __LINE__);
 		*config = spa_config_generate(spa, NULL, -1ULL, B_TRUE);
-
+		dprintf("%s:%d: [Dbg] spa config generate returned.\n", __func__, __LINE__);
+	}
 	/*
 	 * If we've recovered the pool, pass back any information we
 	 * gathered while doing the load.
@@ -4620,13 +4672,15 @@ spa_open_common(const char *pool, spa_t **spapp, void *tag, nvlist_t *nvpolicy,
 
 #ifdef _KERNEL
 	if (firstopen) {
+		dprintf("%s:%d: [Dbg] calling  zvol_create_minors()\n", __func__, __LINE__);
+
 		zvol_create_minors(spa, spa_name(spa), B_TRUE);
 	}
 #endif /* _KERNEL */
 
 	*spapp = spa;
 
-	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
+	TraceEvent(4, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -4868,19 +4922,26 @@ spa_get_stats(const char *name, nvlist_t **config,
 	int error;
 	spa_t *spa;
 
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
+
 	*config = NULL;
 	error = spa_open_common(name, &spa, FTAG, NULL, config);
 
 	if (spa != NULL) {
+		//dprintf("%s:%d: [Dbg] spa_open_common() success.\n", __func__, __LINE__);
+
 		/*
 		 * This still leaves a window of inconsistency where the spares
 		 * or l2cache devices could change and the config would be
 		 * self-inconsistent.
 		 */
+		dprintf("%s:%d: [Dbg] spa config enter.\n", __func__, __LINE__);
+
 		spa_config_enter(spa, SCL_CONFIG, FTAG, RW_READER);
 
 		if (*config != NULL) {
 			uint64_t loadtimes[2];
+			dprintf("%s:%d: [Dbg] found  spa config.\n", __func__, __LINE__);
 
 			loadtimes[0] = spa->spa_loaded_ts.tv_sec;
 			loadtimes[1] = spa->spa_loaded_ts.tv_nsec;
@@ -4892,6 +4953,8 @@ spa_get_stats(const char *name, nvlist_t **config,
 			    spa_get_errlog_size(spa)) == 0);
 
 			if (spa_suspended(spa)) {
+				dprintf("%s:%d: [Dbg] spa suspended.\n", __func__, __LINE__);
+
 				VERIFY(nvlist_add_uint64(*config,
 				    ZPOOL_CONFIG_SUSPENDED,
 				    spa->spa_failmode) == 0);
@@ -4899,11 +4962,16 @@ spa_get_stats(const char *name, nvlist_t **config,
 				    ZPOOL_CONFIG_SUSPENDED_REASON,
 				    spa->spa_suspended) == 0);
 			}
+			
+			//dprintf("%s:%d: [Dbg] calling spa_add_spares().\n", __func__, __LINE__);
 
 			spa_add_spares(spa, *config);
 			spa_add_l2cache(spa, *config);
+			dprintf("%s:%d: [Dbg] calling spa_add_feature_stats().\n", __func__, __LINE__);
 			spa_add_feature_stats(spa, *config);
 		}
+		else
+			dprintf("%s:%d: [Dbg] did not find spa config.\n", __func__, __LINE__);
 	}
 
 	/*
@@ -4911,6 +4979,8 @@ spa_get_stats(const char *name, nvlist_t **config,
 	 * and call spa_lookup() directly.
 	 */
 	if (altroot) {
+		dprintf("%s:%d: [Dbg] checking spa_altroot().\n", __func__, __LINE__);
+
 		if (spa == NULL) {
 			mutex_enter(&spa_namespace_lock);
 			spa = spa_lookup(name);
@@ -4926,9 +4996,13 @@ spa_get_stats(const char *name, nvlist_t **config,
 	}
 
 	if (spa != NULL) {
+		dprintf("%s:%d: [Dbg] calling spa_config_exit().\n", __func__, __LINE__);
+
 		spa_config_exit(spa, SCL_CONFIG, FTAG);
 		spa_close(spa, FTAG);
 	}
+
+	dprintf("%s:%d: [Dbg] func exit. ret: %d\n", __func__, __LINE__, error);
 
 	return (error);
 }
@@ -5725,6 +5799,8 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 	    zpool_prop_to_name(ZPOOL_PROP_READONLY), &readonly);
 	if (readonly)
 		mode = SPA_MODE_READ;
+
+	dprintf("%s:%d: [Dbg] calling spa_add()\n", __func__, __LINE__);
 	spa = spa_add(pool, config, altroot);
 	spa->spa_import_flags = flags;
 
@@ -5744,6 +5820,7 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 		return (0);
 	}
 
+	dprintf("%s:%d: [Dbg] calling spa_activate()\n", __func__, __LINE__);
 	spa_activate(spa, mode);
 
 	/*
@@ -5764,6 +5841,8 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 		zfs_dbgmsg("spa_import: importing %s, max_txg=%lld "
 		    "(RECOVERY MODE)", pool, (longlong_t)policy.zlp_txg);
 	}
+
+	dprintf("%s:%d: [Dbg] calling spa_load_best()\n", __func__, __LINE__);
 	error = spa_load_best(spa, state, policy.zlp_txg, policy.zlp_rewind);
 
 	/*
@@ -5878,6 +5957,7 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 
 	mutex_exit(&spa_namespace_lock);
 
+	dprintf("%s:%d: [Dbg] calling spa_history_log_version()\n", __func__, __LINE__);
 	spa_history_log_version(spa, "import");
 
 #if defined(_WIN32) && defined(_KERNEL)
@@ -5892,10 +5972,12 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 //	zfs_boot_update_bootinfo(spa);
 
 	/* create zvol devices */
+	dprintf("%s:%d: [Dbg] calling zvol_create_minors()\n", __func__, __LINE__);
 	zvol_create_minors(spa, pool, B_TRUE);
 
 	/* Retake namespace lock to drop open ref */
 	mutex_enter(&spa_namespace_lock);
+
 	spa_close(spa, FTAG);
 	mutex_exit(&spa_namespace_lock);
 #endif	/* _WIN32 && _KERNEL */
@@ -5916,6 +5998,8 @@ spa_tryimport(nvlist_t *tryconfig)
 	int error;
 	zpool_load_policy_t policy;
 
+	dprintf("%s:%d: [Dbg] func enter.\n", __func__, __LINE__);
+
 	if (nvlist_lookup_string(tryconfig, ZPOOL_CONFIG_POOL_NAME, &poolname))
 		return (NULL);
 
@@ -5927,11 +6011,13 @@ spa_tryimport(nvlist_t *tryconfig)
 	 */
 	mutex_enter(&spa_namespace_lock);
 	spa = spa_add(TRYIMPORT_NAME, tryconfig, NULL);
+	dprintf("%s:%d: [Dbg] calling spa_activate().\n", __func__, __LINE__);
 	spa_activate(spa, SPA_MODE_READ);
 
 	/*
 	 * Rewind pool if a max txg was provided.
 	 */
+	dprintf("%s:%d: [Dbg] calling zpool_get_load_policy().\n", __func__, __LINE__);
 	zpool_get_load_policy(spa->spa_config, &policy);
 	if (policy.zlp_txg != UINT64_MAX) {
 		spa->spa_load_max_txg = policy.zlp_txg;
@@ -6010,10 +6096,14 @@ spa_tryimport(nvlist_t *tryconfig)
 		spa_add_l2cache(spa, config);
 		spa_config_exit(spa, SCL_CONFIG, FTAG);
 	}
+	
+	dprintf("%s:%d: [Dbg] calling spa_unload().\n", __func__, __LINE__);
 	spa_unload(spa);
 	spa_deactivate(spa);
 	spa_remove(spa);
 	mutex_exit(&spa_namespace_lock);
+
+	dprintf("%s:%d: [Dbg] func exit.\n", __func__, __LINE__);
 
 	return (config);
 }

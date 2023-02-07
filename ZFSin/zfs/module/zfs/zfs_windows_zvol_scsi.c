@@ -625,7 +625,7 @@ ScsiOpReadCapacity16(
 	blockSize = MP_BLOCK_SIZE;
 	maxBlocks = (zv->zv_volsize / blockSize) - 1;
 
-	dprintf("%s:%d Block Size: 0x%x Total Blocks: 0x%llx targetid:%d lun:%d, volname:%s, zv_volsize=%llu\n",
+	TraceEvent(8, "%s:%d Block Size: 0x%x Total Blocks: 0x%llx targetid:%d lun:%d, volname:%s, zv_volsize=%llu\n",
 		__func__, __LINE__, blockSize, maxBlocks, pSrb->TargetId, pSrb->Lun, zv->zv_name, zv->zv_volsize);
 
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
