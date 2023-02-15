@@ -1036,8 +1036,10 @@ zpool_read_label_win(HANDLE h, off_t offset, uint64_t len, nvlist_t **config, in
 	drivesize = len;
 	size = P2ALIGN_TYPED(drivesize, sizeof(vdev_label_t), uint64_t);
 
-	if ((label = malloc(sizeof(vdev_label_t))) == NULL)
+	if ((label = malloc(sizeof(vdev_label_t))) == NULL) {
+		TraceWrite("func return.malloc() failed ThreadID:%lu [%s:%d]", threadID, __func__, __LINE__);
 		return (-1);
+	}
 
 	for (l = 0; l < VDEV_LABELS; l++) {
 		uint64_t state, guid, txg;
@@ -1087,6 +1089,8 @@ zpool_read_label_win(HANDLE h, off_t offset, uint64_t len, nvlist_t **config, in
 
 	free(label);
 	*config = expected_config;
+
+	TraceWrite("func return.ThreadID:%lu [%s:%d]", threadID, __func__, __LINE__);
 
 	return (0);
 }
@@ -1487,7 +1491,10 @@ zpool_open_func_win(void *arg)
 	*/
 	if ((strncmp(rn->rn_name, "core", 4) == 0) ||
 		(strncmp(rn->rn_name, "watchdog", 8) == 0))
+	{
+		TraceWrite("func return.rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name, threadID, __func__, __LINE__);
 		return;
+	}
 
 	/*
 	* Ignore failed stats.  We only want regular files and block devices.
@@ -1504,6 +1511,9 @@ zpool_open_func_win(void *arg)
 		while (end && *end == '#') end++;
 		len = strtoull(end, &end, 10);
 		while (end && *end == '#') end++;
+
+		TraceWrite("calling createfile() for rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name, threadID, __func__, __LINE__);
+
 		fd = CreateFile(end,
 			GENERIC_READ,
 			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -1512,21 +1522,28 @@ zpool_open_func_win(void *arg)
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 			NULL);
 		if (fd == INVALID_HANDLE_VALUE) {
-			int error = GetLastError();
+			DWORD error = GetLastError();
+			TraceWrite("func return.CreateFile() failed with error %lu.rn->rn_name:%s ThreadID:%lu [%s:%d]", error,rn->rn_name, threadID, __func__, __LINE__);
 			return;
 		}
+		
 		LARGE_INTEGER place;
 		place.QuadPart = offset;
-		SetFilePointerEx(fd, place, NULL, FILE_BEGIN); // If it fails, we cant read label
+		TraceWrite("Call SetFilePointerEx: offset:%lld,rn->rn_name:%s ThreadID:%lu [%s:%d]", place.QuadPart, rn->rn_name, threadID, __func__, __LINE__);
+		BOOL retval = SetFilePointerEx(fd, place, NULL, FILE_BEGIN); // If it fails, we cant read label
+		
+		if(retval)
+			TraceWrite("SetFilePointerEx:success. rn->rn_name:%s ThreadID:%lu [%s:%d]", rn->rn_name, threadID, __func__, __LINE__);
+		else
+			TraceWrite("SetFilePointerEx:failed with error.%lu rn->rn_name:%s ThreadID:%lu [%s:%d]", GetLastError(), rn->rn_name, threadID, __func__, __LINE__);
+
 		drive_len = len;
-
-
 	} else {
 		// We have no openat() - so stich paths togther.
 		char fullpath[MAX_PATH];
 		snprintf(fullpath, sizeof(fullpath), "%s%s", 
 			rn->rn_parent ? rn->rn_parent : "", rn->rn_name);
-		TraceWrite("FullPath :%s ThreadID:%lu [%s:%d]", fullpath, threadID,__func__,__LINE__);
+		TraceWrite("calling createfile().FullPath :%s ThreadID:%lu [%s:%d]", fullpath, threadID,__func__,__LINE__);
 		fd = CreateFile(fullpath,
 			GENERIC_READ,
 			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -1535,17 +1552,20 @@ zpool_open_func_win(void *arg)
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 			NULL);
 		if (fd == INVALID_HANDLE_VALUE) {
-			int error = GetLastError();
+			DWORD error = GetLastError();
+			TraceWrite("func return.CreateFile() failed with error %lu.FullPath:%s ThreadID:%lu [%s:%d]", error, fullpath, threadID, __func__, __LINE__);
 			return;
 		}
 
+		TraceWrite("createFile() success. Get GetFileDriveSize().FullPath:%s ThreadID:%lu [%s:%d]", fullpath, threadID, __func__, __LINE__);
 		drive_len = GetFileDriveSize(fd);
 	}
 	DWORD type = GetFileType(fd);
-	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, threadID,__func__, __LINE__);
 	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	
 	type = GetDriveType(rn->rn_name);
+	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, threadID, __func__, __LINE__);
+
 	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	//if ((fd = openat64(rn->rn_dfd, rn->rn_name, O_RDONLY)) < 0) {
 	//	/* symlink to a device that's no longer there */
@@ -1559,6 +1579,7 @@ zpool_open_func_win(void *arg)
 	if (type == FILE_TYPE_DISK &&
 		drive_len < SPA_MINDEVSIZE) {
 		CloseHandle(fd);
+		TraceWrite("func return.drive_len %llu is  less than SPA_MINDEVSIZE ThreadID:%lu [%s:%d]", drive_len, threadID, __func__, __LINE__);
 		return;
 	}
 
@@ -1579,12 +1600,15 @@ zpool_open_func_win(void *arg)
 	if ((zpool_read_label_win(fd, offset, drive_len, &config, &num_labels)) != 0) {
 		CloseHandle(fd);
 		(void)no_memory(rn->rn_hdl);
+		TraceWrite("func return.zpool_read_label_win failed. ThreadID:%lu [%s:%d]",  threadID, __func__, __LINE__);
 		return;
 	}
 	TraceWrite("num_labels %d ThreadID:%lu [%s:%d]", num_labels, threadID,__func__, __LINE__);
 	if (num_labels == 0) {
 		CloseHandle(fd);
+		TraceWrite("Feeing nvlist. num_labels=0 ThreadID:%lu [%s:%d]", threadID, __func__, __LINE__);
 		nvlist_free(config);
+		TraceWrite("func return.num_labels=0 ThreadID:%lu [%s:%d]", threadID, __func__, __LINE__);
 		return;
 	}
 
@@ -1592,6 +1616,8 @@ zpool_open_func_win(void *arg)
 
 	rn->rn_config = config;
 	rn->rn_num_labels = num_labels;
+
+	TraceWrite("func return.num_labels=%d config=%p ThreadID:%lu [%s:%d]", num_labels, config, threadID, __func__, __LINE__);
 }
 
 /*
@@ -1877,6 +1903,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 		 * locks in the kernel, so going beyond this doesn't
 		 * buy us much.
 		 */
+
 		t = taskq_create("z_import", 2 * max_ncpus, defclsyspri,
 		    2 * max_ncpus, INT_MAX, TASKQ_PREPOPULATE);
 		for (slice = avl_first(&slice_cache); slice;
@@ -2265,6 +2292,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 		* locks in the kernel, so going beyond this doesn't
 		* buy us much.
 		*/
+		TraceWrite("num of entries in slice_cache:%d. [%s:%d]", slice_cache.avl_numnodes, __func__, __LINE__);
 		t = taskq_create("z_import", 2 * max_ncpus, defclsyspri,
 			2 * max_ncpus, INT_MAX, TASKQ_PREPOPULATE);
 		for (slice = avl_first(&slice_cache); slice;
@@ -2272,10 +2300,11 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				AVL_AFTER)))
 				(void) taskq_dispatch(t, zpool_open_func_win, slice,
 					TQ_SLEEP);
-		TraceWrite("Going to wait for taskq thread to complete all zpool_open_func_win [%s:%d]", __func__, __LINE__);
+		TraceWrite("Main thread going to wait for taskq thread to complete all zpool_open_func_win [%s:%d]", __func__, __LINE__);
 		taskq_wait(t);
+		TraceWrite("Main thread going to wait for taskq destroy() to complete[%s:%d]", __func__, __LINE__);
 		taskq_destroy(t);
-		TraceWrite("All taskq zpool_open_func_win operation completed [%s:%d]", __func__, __LINE__);
+		TraceWrite("Main thread.All taskq zpool_open_func_win operation completed [%s:%d]", __func__, __LINE__);
 		cookie = NULL;
 
 		while ((slice = avl_destroy_nodes(&slice_cache,
@@ -2352,6 +2381,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 					  free(ne);
 				  }
 
+				  TraceWrite("Main thread. zpool_find_import_win return. [%s:%d]", __func__, __LINE__);
 				  return (ret);
 }
 #endif // WIN32

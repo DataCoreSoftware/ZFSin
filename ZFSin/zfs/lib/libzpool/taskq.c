@@ -34,6 +34,7 @@ int taskq_now;
 taskq_t *system_taskq;
 
 #define	TASKQ_ACTIVE	0x00010000
+extern int TraceWrite(const char* fmt, ...);
 
 static taskq_ent_t *
 task_alloc(taskq_t *tq, int tqflags)
@@ -187,10 +188,13 @@ taskq_dispatch_ent(taskq_t *tq, task_func_t func, void *arg, uint_t flags,
 void
 taskq_wait(taskq_t *tq)
 {
+	TraceWrite("Main thread. taskq_wait enter.trying to acquire lock. tq->tq_active=%d [%s:%d]", tq->tq_active, __func__, __LINE__);
 	mutex_enter(&tq->tq_lock);
+	TraceWrite("Main thread. taskq_wait. Acquired lock.tq->tq_active=%d,Is_task_list_empty:%d [%s:%d]", tq->tq_active, (tq->tq_task.tqent_next == &tq->tq_task), __func__, __LINE__);
 	while (tq->tq_task.tqent_next != &tq->tq_task || tq->tq_active != 0)
 		cv_wait(&tq->tq_wait_cv, &tq->tq_lock);
 	mutex_exit(&tq->tq_lock);
+	TraceWrite("Main thread. taskq_wait exit [%s:%d]", __func__, __LINE__);
 }
 
 void
@@ -211,8 +215,11 @@ taskq_thread(void *arg)
 	taskq_t *tq = arg;
 	taskq_ent_t *t;
 	boolean_t prealloc;
+	DWORD threadID = GetCurrentThreadId();
 
 	mutex_enter(&tq->tq_lock);
+	TraceWrite("taskq_thread func enter.acquired lock.tq->tq_active=%d ThreadID:%lu [%s:%d]", tq->tq_active,threadID, __func__, __LINE__);
+
 	while (tq->tq_flags & TASKQ_ACTIVE) {
 		if ((t = tq->tq_task.tqent_next) == &tq->tq_task) {
 			if (--tq->tq_active == 0)
@@ -226,19 +233,26 @@ taskq_thread(void *arg)
 		t->tqent_next = NULL;
 		t->tqent_prev = NULL;
 		prealloc = t->tqent_flags & TQENT_FLAG_PREALLOC;
+		TraceWrite("taskq Invoking callback func.tq->tq_active=%d ThreadID:%lu [%s:%d]", tq->tq_active, threadID, __func__, __LINE__);
 		mutex_exit(&tq->tq_lock);
-
+		
 		rw_enter(&tq->tq_threadlock, RW_READER);
 		t->tqent_func(t->tqent_arg);
 		rw_exit(&tq->tq_threadlock);
 
 		mutex_enter(&tq->tq_lock);
+		TraceWrite("taskq callback func returned. tq->tq_active=%d ThreadID:%lu [%s:%d]", tq->tq_active, threadID, __func__, __LINE__);
+
 		if (!prealloc)
 			task_free(tq, t);
 	}
+	
 	tq->tq_nthreads--;
 	cv_broadcast(&tq->tq_wait_cv);
+	TraceWrite("taskq_thread exit. tq->tq_nthreads: %d ThreadID:%lu [%s:%d]", tq->tq_nthreads, threadID, __func__, __LINE__);
+
 	mutex_exit(&tq->tq_lock);
+	
 	thread_exit();
 }
 
@@ -250,6 +264,7 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 	taskq_t *tq = kmem_zalloc(sizeof (taskq_t), KM_SLEEP);
 	int t;
 
+	
 	if (flags & TASKQ_THREADS_CPU_PCT) {
 		int pct;
 		SYSTEM_INFO sys;
@@ -290,9 +305,13 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 		mutex_exit(&tq->tq_lock);
 	}
 
+	TraceWrite("taskq_create(). tq->tq_nthreads:%d [%s:%d]", tq->tq_nthreads, __func__, __LINE__);
+
 	for (t = 0; t < nthreads; t++)
 		VERIFY((tq->tq_threadlist[t] = thread_create(NULL, 0,
 			taskq_thread, tq, 0, NULL, TS_RUN, pri)) != NULL);
+
+	TraceWrite("taskq_create() return [%s:%d]", __func__, __LINE__);
 
 	return (tq);
 }
@@ -300,17 +319,26 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 void
 taskq_destroy(taskq_t *tq)
 {
+	TraceWrite("taskq_destroy() enter. tq->tq_active:%d [%s:%d]", tq->tq_active, __func__, __LINE__);
+
 	int nthreads = tq->tq_nthreads;
 
 	taskq_wait(tq);
 
 	mutex_enter(&tq->tq_lock);
 
+	TraceWrite("taskq_destroy.setting ~TASKQ_ACTIVE.tq->tq_active=%d [%s:%d]", tq->tq_active, __func__, __LINE__);
+
 	tq->tq_flags &= ~TASKQ_ACTIVE;
+
 	cv_broadcast(&tq->tq_dispatch_cv);
+
+	TraceWrite("taskq_destroy() waiting for all taskq threads to exit. tq->tq_nthreads:%d tq->tq_active:%d [%s:%d]", tq->tq_nthreads, tq->tq_active, __func__, __LINE__);
 
 	while (tq->tq_nthreads != 0)
 		cv_wait(&tq->tq_wait_cv, &tq->tq_lock);
+
+	TraceWrite("taskq_destroy() Freeing the taskq allocs:%d [%s:%d]", tq->tq_nalloc, __func__, __LINE__);
 
 	tq->tq_minalloc = 0;
 	while (tq->tq_nalloc != 0) {
@@ -319,6 +347,8 @@ taskq_destroy(taskq_t *tq)
 	}
 
 	mutex_exit(&tq->tq_lock);
+	
+	TraceWrite("taskq_destroy() After freeing all tq entries. [%s:%d]", __func__, __LINE__);
 
 	kmem_free(tq->tq_threadlist, nthreads * sizeof (kthread_t *));
 
@@ -329,6 +359,7 @@ taskq_destroy(taskq_t *tq)
 	cv_destroy(&tq->tq_maxalloc_cv);
 
 	kmem_free(tq, sizeof (taskq_t));
+	TraceWrite("taskq_destroy() exit. [%s:%d]", __func__, __LINE__);
 }
 
 int
