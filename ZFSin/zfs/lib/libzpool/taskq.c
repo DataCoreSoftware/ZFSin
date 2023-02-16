@@ -209,6 +209,10 @@ taskq_wait_outstanding(taskq_t *tq, taskqid_t id)
 	taskq_wait(tq);
 }
 
+static const DWORD duration = 15 * 1000;//msec
+static ULONGLONG currentTime;
+static ULONGLONG previousTime;
+
 static void
 taskq_thread(void *arg)
 {
@@ -226,6 +230,14 @@ taskq_thread(void *arg)
 				cv_broadcast(&tq->tq_wait_cv);
 			cv_wait(&tq->tq_dispatch_cv, &tq->tq_lock);
 			tq->tq_active++;
+
+			//print progress log periodically
+			currentTime = GetTickCount64();
+			if (currentTime - previousTime >= duration) {
+				TraceWrite("In taskq_thread while loop.tq->tq_active=%d tq->tq_nthreads:%d ThreadID:%lu [%s:%d]", tq->tq_active, tq->tq_nthreads,threadID, __func__, __LINE__);
+				previousTime = currentTime;
+			}
+			//
 			continue;
 		}
 		t->tqent_prev->tqent_next = t->tqent_next;
@@ -264,7 +276,7 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 	taskq_t *tq = kmem_zalloc(sizeof (taskq_t), KM_SLEEP);
 	int t;
 
-	
+
 	if (flags & TASKQ_THREADS_CPU_PCT) {
 		int pct;
 		SYSTEM_INFO sys;
@@ -297,6 +309,8 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 	tq->tq_task.tqent_prev = &tq->tq_task;
 	tq->tq_threadlist = kmem_alloc(nthreads * sizeof (kthread_t *),
 	    KM_SLEEP);
+
+	previousTime = GetTickCount64();//msec
 
 	if (flags & TASKQ_PREPOPULATE) {
 		mutex_enter(&tq->tq_lock);

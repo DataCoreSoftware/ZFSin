@@ -1557,12 +1557,15 @@ zpool_open_func_win(void *arg)
 			return;
 		}
 
-		TraceWrite("createFile() success. Get GetFileDriveSize().FullPath:%s ThreadID:%lu [%s:%d]", fullpath, threadID, __func__, __LINE__);
+		TraceWrite("Get GetFileDriveSize().FullPath:%s ThreadID:%lu [%s:%d]", fullpath, threadID, __func__, __LINE__);
 		drive_len = GetFileDriveSize(fd);
 	}
+
+	TraceWrite("GetFileType() ThreadID:%lu [%s:%d]", threadID, __func__, __LINE__);
 	DWORD type = GetFileType(fd);
 	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
-	
+
+	TraceWrite("GetDriveType(),filetype=%d ThreadID:%lu [%s:%d]", type, threadID, __func__, __LINE__);
 	type = GetDriveType(rn->rn_name);
 	TraceWrite("Drive Size %llu , Drive type %d ThreadID:%lu [%s:%d]", drive_len, type, threadID, __func__, __LINE__);
 
