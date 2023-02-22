@@ -8889,7 +8889,7 @@ main(int argc, char **argv)
 		(void) printf("dumping core by request\n");
 		abort();
 	}
-	TraceWrite("Zpool main funct ended [%s:%d]", __func__, __LINE__);
+	TraceWrite("Zpool main funct ended.ret=%d [%s:%d]", ret, __func__, __LINE__);
 	TraceClose();
 	mutex_destroy(&log_lock);
 	return (ret);
