@@ -2257,6 +2257,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 		} // while SetupDiEnumDeviceInterfaces
 
 		TraceWrite("After enumerating devices [%s:%d]", __func__, __LINE__);
+#if 0
 		/* Now lets iterate the partitions (volumes) */
 		HANDLE vol;
 		vol = FindFirstVolume(rdsk, sizeof(rdsk));
@@ -2285,7 +2286,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 		}
 
 		TraceWrite("After processing the Volumes [%s:%d]", __func__, __LINE__);
-
+#endif
 		/*
 		* create a thread pool to do all of this in parallel;
 		* rn_nozpool is not protected, so this is racy in that
