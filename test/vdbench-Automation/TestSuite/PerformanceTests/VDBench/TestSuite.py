@@ -108,7 +108,8 @@ class Run():
         '''
         load = args.workload
         disk = args.disktype
-        all_disk = ['ILDC', 'ILD', 'ILC', 'STANDARD']
+        all_disk = ['ILDC', 'ILD', 'ILC', 'ILDCE', 'ILDE', 'ILCE', 'STANDARD', 'ENCRYPTED']
+        unencrypted_disk = ['ILDC', 'ILD', 'ILC', 'STANDARD']
         all_load = ['VSI', 'VDI', 'SQL', 'ORACLE']
         self.list_lines = []
         if disk.lower().strip() == 'all' and load.lower().strip() == 'all':
@@ -120,6 +121,15 @@ class Run():
             for _ in all_disk:
                 str_ = _.upper() + ' ' + load.upper()
                 self.list_lines.append(str_)
+        elif disk.lower().strip() == 'unencrypted' and load.lower().strip() != 'all':
+            for _ in unencrypted_disk:
+                str_ = _.upper() + ' ' + load.upper()
+                self.list_lines.append(str_)
+        elif disk.lower().strip() == 'unencrypted' and load.lower().strip() == 'all':
+            for _ in unencrypted_disk:
+                for j in all_load:
+                    str_ = _.upper() + ' ' + j.upper()
+                    self.list_lines.append(str_)
         elif disk.lower().strip() != 'all' and load.lower().strip() == 'all':
             for _ in all_load:
                 str_ = disk.upper() + ' ' + _.upper()
@@ -165,7 +175,7 @@ class Run():
         my_parser.add_argument('-disktype', '-d',
                                type=str,
                                help='Specify the disk to be executed. '\
-                                   'Valid Values are : ildc,ild,ilc,ssy,all')
+                                   'Valid Values are : ildc,ild,ilc,ildce,ilde,ilce,ssy,encrypted,unencrypted,all')
         my_parser.add_argument('-slogselect', '-s',
                                type=str,
                                help='Specify the SLOG enable/disable '\
@@ -260,6 +270,7 @@ class Run():
         self.set_config_val('first run', 'raid_flag', 'False')
         self.set_config_val('first run', 'mirror_slog_flag', 'False')
         self.set_config_val('raid', 'raid_level', '0')
+        self.set_config_val('raid', 'add_raid_5_group', 'True')
         self.set_config_val('zfs value', 'primarycache', 'default')
         self.set_config_val('zfs value', 'sync', 'default')
         self.set_config_val('zfs value', 'compression', 'default')

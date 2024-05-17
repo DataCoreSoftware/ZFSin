@@ -97,6 +97,7 @@ class Test_ILDC:
         self.config_dict['l2arc_disk'] = configur.get('l2arc', 'l2arc_disk').split(',')
         self.config_dict['mirror_slog_disk'] = configur.get('mirror slog', 'mirror_s_log_disk').split(',')
         self.config_dict['raid_level'] = configur.get('raid', 'raid_level')
+        self.config_dict['add_raid_5_group'] = configur.get('raid', 'add_raid_5_group')
         self.disk = self.config_dict['co disk'] + self.config_dict['diskpool_disk']
         self.config_dict['encryption_flag'] = configur.get('first run', 'enryption_flag')
         self.config_dict['slog_flag'] = configur.get('first run', 'slog_flag')
@@ -602,7 +603,7 @@ class Test_ILDC:
                                         'Test Started************************')
             time.sleep(30)
             flag = self.test_enable_cap_opt_at_server()
-            if vd_name.lower() != "standard":
+            if vd_name.lower() != "standard" and vd_name.lower() != "encrypted":
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
                     #self.set_slog()
@@ -685,14 +686,38 @@ class Test_ILDC:
         Return: None
         '''
         uri = "servers/" + self.server_id
+        disks = []
+        if self.config_dict['raid_flag'] == 'True' and self.config_dict['raid_level'] == '5' and self.config_dict['add_raid_5_group'] == 'True':
+            num_disks = len(self.co_disk)
+            disks = self.co_disk[0:int(num_disks/2)]
+        else:
+            disks = self.co_disk
         payload_dict = {
             "Operation": "EnableCapacityOptimization",
-            "Disks": self.co_disk,
+            "Disks": disks,
         }
         if self.config_dict['raid_flag'] == 'True':
             payload_dict["RaidLevel"] = self.config_dict['raid_level']
         res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
         msg = "Capacity Optimization enabled successfully at server"
+        flag = self.verification(res.json(), msg)
+        if self.config_dict['raid_flag'] == 'True' and self.config_dict['raid_level'] == '5' and self.config_dict['add_raid_5_group'] == 'True':
+            flag_raid = self.test_add_raid_group_at_server()
+        return flag
+    def test_add_raid_group_at_server(self):
+        '''
+        This method adds new RAID group at server level.
+        Arguments : None
+        Return: None
+        '''
+        uri = "servers/" + self.server_id
+        num_disks = len(self.co_disk)
+        payload_dict = {
+            "Operation": "AddDvaRaidPoolDisks",
+            "Disks": self.co_disk[int(num_disks/2):num_disks],
+        }
+        res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
+        msg = "Added new RAIDZ group successfully at server"
         flag = self.verification(res.json(), msg)
         return flag
     def set_l2arc_api(self):
@@ -719,7 +744,7 @@ class Test_ILDC:
         '''
         uri = "servers/" + self.server_id
         payload_dict = {
-            "Operation": "AddCapacityOptimizationMirrorSLOG",
+            "Operation": "AddCapacityOptimizationSpecialMirror",
             "Disks": self.mirror_slog,
         }
         res = ILDC().do_enable_capacity_optimization(uri, header=None, payload=payload_dict)
@@ -945,13 +970,24 @@ class Test_ILDC:
         #Once the VD is created set virtual disk properties
         if virtual_disk.lower() != "standard":
             if virtual_disk.lower().strip() == "ildc":
-
                 payload["Deduplication"] = True
                 payload["Compression"] = True
             elif virtual_disk.lower() == "ild":
                 payload["Deduplication"] = True
             elif virtual_disk.lower() == "ilc":
                 payload["Compression"] = True
+            elif virtual_disk.lower().strip() == "ildce":
+                payload["Deduplication"] = True
+                payload["Compression"] = True
+                payload["EncryptionEnabled"] = True
+            elif virtual_disk.lower() == "ilde":
+                payload["Deduplication"] = True
+                payload["EncryptionEnabled"] = True
+            elif virtual_disk.lower() == "ilce":
+                payload["Compression"] = True
+                payload["EncryptionEnabled"] = True
+            elif virtual_disk.lower() == "encrypted":
+                payload["EncryptionEnabled"] = True
             uri = "virtualdisks/" + self.vd_id
             res = ILDC().do_enable_cap_opt_on_vd(uri, header=None, payload=payload)
             msg = virtual_disk + " properties enabled successfully on virtual disk"
@@ -960,6 +996,21 @@ class Test_ILDC:
                 LogCreat().logger_info.info(msg)
             else:
                 self.verification(res.json(), msg)
+                
+            if virtual_disk.lower() in ["ildce", "ilde", "ilce", "encrypted"]:
+                msg="Encrypted ZVols Reclamation started..."
+                print(msg)
+                LogCreat().logger_info.info(msg)
+        
+                time.sleep(30)
+                disk_id = self.get_disks_id()
+                while (self.reclamation(disk_id) == False):
+                    print(".", sep='', end='', flush=True)
+                    time.sleep(30)
+                print("\n")
+                msg="Encrypted ZVols Reclamation completed"
+                print(msg)
+                LogCreat().logger_info.info(msg)
         else:
             if self.config_dict['encryption_flag'] == 'True':
                 payload["EncryptionEnabled"] = True

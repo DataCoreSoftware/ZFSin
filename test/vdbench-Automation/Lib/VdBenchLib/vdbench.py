@@ -310,8 +310,11 @@ class ResultCreation():
                 if _.split()[0] == 'tod':
                     flag = 1
         os_mem, ddt, comp, dedup = self.zfs_data()
+        msg = "Dedup ratio: " + dedup + " Compress ratio: " + comp + " DDT size: " + ddt + " ZFS Memory Usage: " + os_mem
+        LogCreat().logger_info.info(msg)
         self.merge_list = [os_mem, ddt, dedup, comp, list_data[2], list_data[1], list_data[0]]
-        self.start_update_html(vd_name, workload)
+        #TA-6430 for reporting changes
+        #self.start_update_html(vd_name, workload)
     def zfs_data(self):
         '''
         Thismethod read ZFS data.
