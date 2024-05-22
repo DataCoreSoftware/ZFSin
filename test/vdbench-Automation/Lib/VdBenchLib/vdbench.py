@@ -313,7 +313,8 @@ class ResultCreation():
         msg = "Dedup ratio: " + dedup + " Compress ratio: " + comp + " DDT size: " + ddt + " ZFS Memory Usage: " + os_mem
         LogCreat().logger_info.info(msg)
         self.merge_list = [os_mem, ddt, dedup, comp, list_data[2], list_data[1], list_data[0]]
-        self.start_update_html(vd_name, workload)
+        #TA-6430 for reporting changes
+        #self.start_update_html(vd_name, workload)
     def zfs_data(self):
         '''
         Thismethod read ZFS data.
@@ -420,7 +421,7 @@ class ResultCreation():
         workload : str
             Type of workload
         virtualdisk : str
-            Type of virtual disk (ILDC/ILC/ILD/STANDARD/ENCRYPTED/ILDCE/ILCE/ILDE)
+            Type of virtual disk (ILDC/ILC/ILD/STANDARD)
         Return: None
         '''
         path_html = os.path.abspath("../../..") + '/' + 'HTML_Template' + '/'
@@ -444,7 +445,7 @@ class ResultCreation():
                 data = data + '">' + self.merge_list[0] + "</td>"
                 list_lines[index] = data
                 self.merge_list.pop(0)
-                number += 9
+                number += 5
             if val.strip() == '<script class="u-script" type="text/javascript" '\
                 'src="jquery.js" defer=""></script>':
                 list_lines[index] = '<script class="u-script" type="text/javascript" '\
@@ -483,7 +484,7 @@ class ResultCreation():
         workload : str
             Type of workload
         virtualdisk : str
-            Type of virtual disk (ILDC/ILC/ILD/STANDARD/ENCRYPTED/ILDCE/ILCE/ILDE)
+            Type of virtual disk (ILDC/ILC/ILD/STANDARD)
 
         Returns
         -------
@@ -492,16 +493,16 @@ class ResultCreation():
         '''
         number = 0
         if workload.lower().strip() == 'vsi':
-            start = 10
+            start = 7
             number = self.repeate_loop(number, virtualdisk, start)
         elif workload.lower().strip() == 'vdi':
-            start = 82
+            start = 47
             number = self.repeate_loop(number, virtualdisk, start)
         elif workload.lower().strip() == 'oracle':
-            start = 154
+            start = 87
             number = self.repeate_loop(number, virtualdisk, start)
         else:
-            start = 226
+            start = 127
             number = self.repeate_loop(number, virtualdisk, start)
         return number
     def repeate_loop(self, number, virtualdisk, start):
@@ -512,7 +513,7 @@ class ResultCreation():
         number : int
             store line no for HTML page
         virtualdisk : str
-            Type of virtual disk (ILDC/ILC/ILD/STANDARD/ENCRYPTED/ILDCE/ILCE/ILDE)
+            Type of virtual disk (ILDC/ILC/ILD/STANDARD)
         start : int
             start point of colum which used for HTML page
 
@@ -528,14 +529,6 @@ class ResultCreation():
             number = start+2
         elif virtualdisk.lower().strip() == 'ilc':
             number = start+3
-        elif virtualdisk.lower().strip() == 'encrypted':
-            number = start+4
-        elif virtualdisk.lower().strip() == 'ildce':
-            number = start+5
-        elif virtualdisk.lower().strip() == 'ilde':
-            number = start+6
-        elif virtualdisk.lower().strip() == 'ilce':
-            number = start+7
         else:
             number = start
         return number
