@@ -45,6 +45,7 @@
 //#include <wmistr.h>
 //#include <wdf.h>
 //#include <hbaapi.h>
+#include <sys/zfs_context.h>
 #include <sys/wzvol.h>
 //#include <sys/wzvolwmi.h>
 
@@ -93,6 +94,7 @@
  * when the refcnt reaches 0 it is safe to free the remove lock cb. 
  */
 extern wzvolDriverInfo STOR_wzvolDriverInfo;
+extern taskq_t *zvol_taskq;
 
 inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
 static inline void wzvol_decref_target(wzvolContext* zvc) 
@@ -128,7 +130,8 @@ static inline BOOLEAN wzvol_lock_target(zvol_state_t* zv)
 
 	return FALSE;
 }
-static inline void wzvol_unlock_target(zvol_state_t *zv)
+
+void wzvol_unlock_target(zvol_state_t *zv)
 {		
 	wzvolContext* zvc = (pwzvolContext)zv->zv_target_context;
 	IoReleaseRemoveLock(zvc->pIoRemLock, zv);	
@@ -183,7 +186,7 @@ int wzvol_assign_targetid(zvol_state_t *zv)
 /* note: find_target will lock the zv's remove lock. caller is responsible to unlock_target 
 		 if a non-NULL zv pointer is returned
 */
-static inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
+inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
 {
 	wzvolContext* zv_targets = STOR_wzvolDriverInfo.zvContextArray;
 	ASSERT(targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets);
@@ -205,7 +208,6 @@ static inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
 	}	
 	return NULL;
 }
-
 
 void wzvol_clear_targetid(uint8_t targetid, uint8_t lun, zvol_state_t* zv)
 {
@@ -235,8 +237,8 @@ ScsiExecuteMain(
 {
     UCHAR            status = SRB_STATUS_INVALID_REQUEST;
 
-   dprintf("ScsiExecute: pSrb = 0x%p, CDB = 0x%x Path: %x TID: %x Lun: %x\n",
-                      pSrb, pSrb->Cdb[0], pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+   TraceEvent(8,"%s:%d: ScsiExecute: pSrb = 0x%p, CDB = 0x%x Path: %x TID: %x Lun: %x\n",
+					 __func__, __LINE__, pSrb, pSrb->Cdb[0], pSrb->PathId, pSrb->TargetId, pSrb->Lun);
 
     *pResult = ResultDone;
 
@@ -623,7 +625,9 @@ ScsiOpReadCapacity16(
 	blockSize = MP_BLOCK_SIZE;
 	maxBlocks = (zv->zv_volsize / blockSize) - 1;
 
-	dprintf("Block Size: 0x%x Total Blocks: 0x%llx\n", blockSize, maxBlocks);
+	dprintf("%s:%d Block Size: 0x%x Total Blocks: 0x%llx targetid:%d lun:%d, volname:%s, zv_volsize=%llu\n",
+		__func__, __LINE__, blockSize, maxBlocks, pSrb->TargetId, pSrb->Lun, zv->zv_name, zv->zv_volsize);
+
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
 	REVERSE_BYTES_QUAD(&readCapacity->LogicalBlockAddress.QuadPart, &maxBlocks);
 	lppFactor = zv->zv_volblocksize / MP_BLOCK_SIZE;
@@ -832,11 +836,14 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 
 	sectorOffset = startingSector * MP_BLOCK_SIZE;
 
-	dprintf("MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", pWkRtnParms->Action, startingSector, sectorOffset);
-	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
-
+	TraceEvent(8,"%s:%d: MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", __func__, __LINE__, pWkRtnParms->Action, startingSector, sectorOffset);
+	TraceEvent(8,"%s:%d: MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", __func__, __LINE__, pSrb, pSrb->DataBuffer);
+	
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
-		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
+		dprintf("%s:%d invalid starting sector: %d for zvol:%s, volsize=%llu, minor=%d, target_id=%d, lun_id=%d\n",
+			__func__, __LINE__, startingSector, zv->zv_name, zv->zv_volsize, zv->zv_minor,
+			zv->zv_target_id, zv->zv_lun_id);
+		
 		status = SRB_STATUS_INVALID_REQUEST;
 		goto Done;
 	}
@@ -903,3 +910,119 @@ wzvol_GeneralWkRtn(
 	wzvol_WkRtn(pWkParms);                                // Do the actual work.
 }                                                     // End MpGeneralWkRtn().
 
+/*
+** ZFS ZVOLDI 
+** ZVOL Direct Interface
+*/
+
+VOID
+bzvol_ReadWriteTaskRtn(
+	__in PVOID           pWkParms          // Parm list 
+)
+{
+	NTSTATUS Status;
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
+	uio_t* uio = pWkRtnParms->pUio;
+	int iores;
+
+	/* Call ZFS to read/write data */
+	if (ActionRead == pWkRtnParms->Action) {
+		iores = zvol_read(pWkRtnParms->zv, uio, 0);
+	}
+	else {
+		iores = zvol_write(pWkRtnParms->zv, uio, 0); /* TODO add flag if FUA */
+	}
+
+	if (pIo->Cb) {
+		pIo->Cb(pIo, iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL, TRUE);
+	}
+	uio_free(uio);
+	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+}
+
+VOID bzvol_TaskQueuingWkRtn(
+	__in PVOID           pDummy,           // Not used.	
+	__in PVOID           pWkParms          // Parm list 
+)
+{
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
+	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem(pWI);
+
+	// Create an uio for the IO. If we can possibly embed
+	// the uio in some Extension to this IO, we could
+	// save the allocation here.
+	uio_t* uio = uio_create(1, 0, UIO_SYSSPACE,
+		ActionRead == pWkRtnParms->Action ? UIO_READ : UIO_WRITE);
+	if (uio == NULL) {
+		dprintf("%s: out of memory.\n", __func__);
+		if (pIo->Cb) {
+			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, TRUE);
+		}
+		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+		return;
+	}
+	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
+		pIo->Length));
+	uio_setoffset(uio, pIo->ByteOffset);
+
+	pWkRtnParms->pUio = uio;
+
+	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
+		taskq_init_ent(&pWkRtnParms->ent);
+		taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+	} else {
+		// bypass the taskq and do everything under workitem thread context.
+		bzvol_ReadWriteTaskRtn(pWkRtnParms);
+	}
+	// workitem freed inside bzvol_ReadWriteTaskRtn
+}
+
+NTSTATUS
+DiReadWriteSetup(
+	zvol_state_t* zv,
+	MpWkRtnAction action,
+	zfsiodesc_t* pIo)
+{
+	// SSV-19147: cannot use kmem_alloc with sleep if IRQL dispatch so get straight from NP pool.
+	// SSV-19161: cannot use uio routines at DISPATCH as they use a mutex. Resolve everything in the workitem.
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, ALIGN_UP_BY(sizeof(MP_WorkRtnParms),16) + IoSizeofWorkItem(), MP_TAG_GENERAL);
+	if (NULL == pWkRtnParms) {
+		if (pIo->Cb) {
+			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, FALSE);
+		}
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
+	pWkRtnParms->ioDesc = *pIo;
+	pWkRtnParms->zv = zv;
+	pWkRtnParms->Action = action;
+
+	// SSV-19147: cannot use taskq queuing at dispatch. must queue a work item to do it.
+	// since taskq queueing involves a possibly waiting mutex we do not want to slow down the caller so 
+	// perform taskq queuing always in the workitem.
+	extern PDEVICE_OBJECT ioctlDeviceObject;
+	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
+	IoInitializeWorkItem(ioctlDeviceObject, pWI);
+	IoQueueWorkItem(pWI, bzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
+	return STATUS_PENDING; // queued up.
+}
+
+
+NTSTATUS ZvolDiRead(
+	PVOID Context,
+	zfsiodesc_t* pIo)
+{
+	return (DiReadWriteSetup((zvol_state_t*)Context, ActionRead, pIo));
+}
+
+NTSTATUS ZvolDiWrite(
+	PVOID Context,
+	zfsiodesc_t* pIo)
+{
+	return (DiReadWriteSetup((zvol_state_t*)Context, ActionWrite, pIo));
+}

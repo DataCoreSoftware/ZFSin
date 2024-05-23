@@ -25,6 +25,7 @@
 #include "zfsinstaller.h"
 #include <ctime>
 #include <string>
+#include <filesystem>
 
 extern "C" {
 	#include <getopt.h>
@@ -43,6 +44,13 @@ extern "C" {
 const unsigned char ZFSIN_GUID[] = "c20c603c-afd4-467d-bf76-c0a4c10553df";
 const unsigned char LOGGER_SESSION[] = "autosession\\zfsin_trace";
 const std::string ETL_FILE("\\ZFSin.etl");
+const std::string MANIFEST_FILE("\\OpenZFS.man");
+
+enum manifest_install_types
+{
+	MAN_INSTALL,
+	MAN_UNINSTALL,
+};
 
 int session_exists(void)
 {
@@ -153,6 +161,13 @@ void hex_modify(std::string& hex)
 	hex = std::string("0x") + hex;
 }
 
+
+std::string get_cwd() {
+	CHAR cwd_path[MAX_PATH_LEN] = { 0 };
+	DWORD len = GetCurrentDirectoryA(MAX_PATH_LEN, cwd_path);
+	return std::string(cwd_path);
+}
+
 int arg_parser(int argc, char **argv, std::string &flags, std::string &levels, int &size_in_mb, std::string &etl_file)
 {
 	int option_index = 0;
@@ -189,16 +204,10 @@ int arg_parser(int argc, char **argv, std::string &flags, std::string &levels, i
 		return ERROR_BAD_ARGUMENTS;
 
 	if (0 == flags.size())       flags = std::string("0xffffffff");
-	if (0 == levels.size())      levels = std::string("0x3");
-	if (-1 == size_in_mb)        size_in_mb = 10;
+	if (0 == levels.size())      levels = std::string("0x4");
+	if (-1 == size_in_mb)        size_in_mb = 250;
 	if (0 == etl_file.size()) {
-		TCHAR CurrentPath[MAX_PATH_LEN + 1] = L"";
-		DWORD len = GetCurrentDirectory(MAX_PATH_LEN, CurrentPath);
-		int size_needed = WideCharToMultiByte(CP_UTF8, 0, &CurrentPath[0], MAX_PATH_LEN, NULL, 0, NULL, NULL);
-		std::string CwdPath(size_needed, 0);
-		WideCharToMultiByte(CP_UTF8, 0, &CurrentPath[0], MAX_PATH_LEN, &CwdPath[0], size_needed, NULL, NULL);
-		CwdPath.erase(len);
-		etl_file = CwdPath + ETL_FILE;
+		etl_file = get_cwd() + ETL_FILE;
 	}
 	return 0;
 }
@@ -231,7 +240,7 @@ int zfs_log_session_create(int argc, char** argv)
 				return ret;
 		}
 
-		sprintf_s(command, "logman create trace %s -p {%s} %s %s -nb 10 10 -bs 100 -mode Circular -max %d -o \"%s\" ",
+		sprintf_s(command, "logman create trace %s -p {%s} %s %s -nb 1 1 -bs 1 -mode Circular -max %d -o \"%s\" ",
 							LOGGER_SESSION, ZFSIN_GUID, flags.c_str(), levels.c_str(), size_in_mb, etl_file.c_str());
 
 		ret = system(command);
@@ -245,6 +254,49 @@ int zfs_log_session_create(int argc, char** argv)
 		fprintf(stderr, "Logman Session %s already exists\n", LOGGER_SESSION);
 
 	return 0;
+}
+
+
+int perf_counters(char* inf_path, int type) {
+	int error = 0;
+	std::filesystem::path path = std::string(inf_path);
+	std::string final_path;
+
+	char driver_path[MAX_PATH_LEN] = { 0 };
+	strncpy_s(driver_path, inf_path, MAX_PATH_LEN);
+	char* slash = strrchr(driver_path, '\\');
+	*slash = '\0';
+
+	if (path.is_absolute())
+		final_path = std::string(driver_path) + MANIFEST_FILE;
+	else if (path.is_relative())
+		final_path = get_cwd() + std::string("\\") + std::string(driver_path) + MANIFEST_FILE;
+
+	char command[MAX_PATH_LEN] = { 0 };
+	switch (type)
+	{
+	case MAN_INSTALL:
+		sprintf_s(command, "lodctr /m:\"%s\"\n", final_path.c_str());
+		break;
+	case MAN_UNINSTALL:
+		sprintf_s(command, "unlodctr /m:\"%s\"", final_path.c_str());
+		break;
+	default:
+		break;
+	}
+
+	fprintf(stderr, "Executing %s\n", command);
+	return system(command);
+}
+
+
+int perf_counters_install(char *inf_path) {
+	return perf_counters(inf_path, MAN_INSTALL);
+}
+
+
+int perf_counters_uninstall(char* inf_path) {
+	return perf_counters(inf_path, MAN_UNINSTALL);
 }
 
 
@@ -305,8 +357,8 @@ void printUsage() {
 	fprintf(stderr, "zfsinstaller trace [-f Flags] | [-l Levels] | [-s SizeOfETLInMB] | [-p AbsolutePathOfETL]\n");
 	fprintf(stderr, "Valid inputs for above arguments are as follows:\n");
 	fprintf(stderr, "Flags (in hex)              Should be in interval [0x0, 0xffffffff]      Default (0xffffffff)\n");
-	fprintf(stderr, "Levels (in hex)             Should be in interval [0x0, 0xff]            Default (0x3)\n");
-	fprintf(stderr, "SizeOfETLInMB (in decimal)  Should be greater than 0                     Default (10)\n");
+	fprintf(stderr, "Levels (in hex)             Should be in interval [0x0, 0xff]            Default (0x4)\n");
+	fprintf(stderr, "SizeOfETLInMB (in decimal)  Should be greater than 0                     Default (250)\n");
 	fprintf(stderr, "AbsolutePathOfETL           Absolute Path including the Etl file name    Default ($CWD%s)\n", ETL_FILE.c_str());
 	fprintf(stderr, "\n");
 	fprintf(stderr, "zfsinstaller trace -d\n");
@@ -330,6 +382,9 @@ DWORD zfs_install(char *inf_path) {
 	if (!error)
 		error = installRootDevice(inf_path);
 
+	if (!error)
+		perf_counters_install(inf_path);
+
 	return error;	
 }
 
@@ -347,6 +402,9 @@ DWORD zfs_uninstall(char *inf_path)
 
 	if (ret == 0)
 		ret = uninstallRootDevice(inf_path);
+
+	if (ret == 0)
+		perf_counters_uninstall(inf_path);
 
 	return ret;
 }

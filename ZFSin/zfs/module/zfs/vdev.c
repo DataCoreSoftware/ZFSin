@@ -295,9 +295,11 @@ vdev_lookup_top(spa_t *spa, uint64_t vdev)
 
 	if (vdev < rvd->vdev_children) {
 		ASSERT(rvd->vdev_child[vdev] != NULL);
+		TraceEvent(8, "%s:%d: vdev = %llu, rvd->vdev_children = %llu. Returning 0x%p",
+			__func__, __LINE__, vdev, rvd->vdev_children, rvd->vdev_child[vdev]);
 		return (rvd->vdev_child[vdev]);
 	}
-
+	dprintf("%s:%d: Returning NULL\n", __func__, __LINE__);
 	return (NULL);
 }
 
@@ -307,14 +309,19 @@ vdev_lookup_by_guid(vdev_t *vd, uint64_t guid)
 	vdev_t *mvd;
 	int c;
 
-	if (vd->vdev_guid == guid)
+	if (vd->vdev_guid == guid) {
+		dprintf("%s:%d: vd->vdev_guid = %llu, vdev_path=%s, vdev_physpath=%s, Returning 0x%p\n", __func__, __LINE__, vd->vdev_guid, vd->vdev_path ? vd->vdev_path: "", vd->vdev_physpath ? vd->vdev_physpath : "", vd);
 		return (vd);
+	}
 
 	for (c = 0; c < vd->vdev_children; c++)
 		if ((mvd = vdev_lookup_by_guid(vd->vdev_child[c], guid)) !=
-		    NULL)
+			NULL) {
+			dprintf("%s:%d: Returning 0x%p\n", __func__, __LINE__, mvd);
 			return (mvd);
+		}
 
+	dprintf("%s:%d: Returning NULL\n", __func__, __LINE__);
 	return (NULL);
 }
 
@@ -712,7 +719,9 @@ vdev_alloc(spa_t *spa, vdev_t **vdp, nvlist_t *nv, vdev_t *parent, uint_t id,
 	 * Get the alignment requirement.
 	 */
 	(void) nvlist_lookup_uint64(nv, ZPOOL_CONFIG_ASHIFT, &vd->vdev_ashift);
-
+	TraceEvent(4,"%s:%d:Getting the vdev ashift value from nvlist and set in vdev_ashift= %d, vdev_id=%d, vdev_guid=%llu, vdev_path=%s, vdev_physpath=%s\n",
+		__func__, __LINE__, vd->vdev_ashift, vd->vdev_id, vd->vdev_guid, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "");
+	
 	/*
 	 * Retrieve the vdev creation time.
 	 */
@@ -1203,10 +1212,14 @@ vdev_metaslab_group_create(vdev_t *vd)
 		 */
 		if (vd->vdev_top == vd && vd->vdev_ashift != 0 &&
 		    mc == spa_normal_class(spa) && vd->vdev_aux == NULL) {
+			TraceEvent(4,"%s:%d:Before modifying vdev_ashift= %d, vdev_path=%s, vdev_phypath=%s, spa_min_ashift = %d, spa_max_ashift=%d\n",
+				__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", spa->spa_min_ashift, spa->spa_max_ashift);
 			if (vd->vdev_ashift > spa->spa_max_ashift)
 				spa->spa_max_ashift = vd->vdev_ashift;
 			if (vd->vdev_ashift < spa->spa_min_ashift)
 				spa->spa_min_ashift = vd->vdev_ashift;
+			TraceEvent(4,"%s:%d:After modifying vdev_ashift= %d, vdev_path=%s, vdev_phypath=%s, spa_min_ashift = %d, spa_max_ashift=%d\n",
+				__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", spa->spa_min_ashift, spa->spa_max_ashift);
 		}
 	}
 }
@@ -1416,12 +1429,14 @@ vdev_probe(vdev_t *vd, zio_t *zio)
 	int l;
 
 	ASSERT(vd->vdev_ops->vdev_op_leaf);
-
+	dprintf("%s:%d: vd = 0x%p, zio = 0x%p\n", __func__, __LINE__, vd, zio);
 	/*
 	 * Don't probe the probe.
 	 */
-	if (zio && (zio->io_flags & ZIO_FLAG_PROBE))
+	if (zio && (zio->io_flags & ZIO_FLAG_PROBE)) {
+		dprintf("%s:%d: zio->io_flags = %llu. Returning NULL\n", __func__, __LINE__, zio->io_flags);
 		return (NULL);
+	}
 
 	/*
 	 * To prevent 'probe storms' when a device fails, we create
@@ -1481,6 +1496,7 @@ vdev_probe(vdev_t *vd, zio_t *zio)
 
 	if (vps == NULL) {
 		ASSERT(zio != NULL);
+		dprintf("%s:%d: Returning NULL\n", __func__, __LINE__);
 		return (NULL);
 	}
 
@@ -1493,10 +1509,14 @@ vdev_probe(vdev_t *vd, zio_t *zio)
 		    ZIO_PRIORITY_SYNC_READ, vps->vps_flags, B_TRUE));
 	}
 
-	if (zio == NULL)
+	if (zio == NULL) {
+		dprintf("%s:%d: Returning 0x%p\n", __func__, __LINE__, pio);
 		return (pio);
+	}
 
 	zio_nowait(pio);
+
+	dprintf("%s:%d: Returning NULL\n", __func__, __LINE__);
 	return (NULL);
 }
 
@@ -1592,6 +1612,8 @@ vdev_open(vdev_t *vd)
 	uint64_t ashift = 0;
 	int c;
 
+	dprintf("%s:%d: vd = 0x%p\n", __func__, __LINE__, vd);
+
 	ASSERT(vd->vdev_open_thread == curthread ||
 	    spa_config_held(spa, SCL_STATE_ALL, RW_WRITER) == SCL_STATE_ALL);
 	ASSERT(vd->vdev_state == VDEV_STATE_CLOSED ||
@@ -1613,10 +1635,14 @@ vdev_open(vdev_t *vd)
 		    vd->vdev_label_aux == VDEV_AUX_EXTERNAL);
 		vdev_set_state(vd, B_TRUE, VDEV_STATE_FAULTED,
 		    vd->vdev_label_aux);
+		dprintf("%s:%d: vd->vdev_removed = %llu, vd->vdev_faulted = %llu. Returning ENXIO = %d\n",
+			__func__, __LINE__, vd->vdev_removed, vd->vdev_faulted, ENXIO);
 		return (SET_ERROR(ENXIO));
 	} else if (vd->vdev_offline) {
 		ASSERT(vd->vdev_children == 0);
 		vdev_set_state(vd, B_TRUE, VDEV_STATE_OFFLINE, VDEV_AUX_NONE);
+		dprintf("%s:%d: vd->vdev_offline = %llu. Returning ENXIO = %d\n",
+			__func__, __LINE__, vd->vdev_offline, ENXIO);
 		return (SET_ERROR(ENXIO));
 	}
 
@@ -1642,6 +1668,7 @@ vdev_open(vdev_t *vd)
 			vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
 			    vd->vdev_stat.vs_aux);
 		}
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 
@@ -1657,6 +1684,7 @@ vdev_open(vdev_t *vd)
 		    vd->vdev_label_aux == VDEV_AUX_EXTERNAL);
 		vdev_set_state(vd, B_TRUE, VDEV_STATE_FAULTED,
 		    vd->vdev_label_aux);
+		dprintf("%s:%d: vd->vdev_faulted = %llu. Returning %d\n", __func__, __LINE__, vd->vdev_faulted, ENXIO);
 		return (SET_ERROR(ENXIO));
 	}
 
@@ -1671,8 +1699,10 @@ vdev_open(vdev_t *vd)
 	/*
 	 * For hole or missing vdevs we just return success.
 	 */
-	if (vd->vdev_ishole || vd->vdev_ops == &vdev_missing_ops)
+	if (vd->vdev_ishole || vd->vdev_ops == &vdev_missing_ops) {
+		dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
+	}
 
 	for (c = 0; c < vd->vdev_children; c++) {
 		if (vd->vdev_child[c]->vdev_state != VDEV_STATE_HEALTHY) {
@@ -1689,6 +1719,7 @@ vdev_open(vdev_t *vd)
 		if (osize < SPA_MINDEVSIZE) {
 			vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
 			    VDEV_AUX_TOO_SMALL);
+			dprintf("%s:%d: osize = %llu. Returning %d\n", __func__, __LINE__, osize, EOVERFLOW);
 			return (SET_ERROR(EOVERFLOW));
 		}
 		psize = osize;
@@ -1700,6 +1731,7 @@ vdev_open(vdev_t *vd)
 		    (VDEV_LABEL_START_SIZE + VDEV_LABEL_END_SIZE)) {
 			vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
 			    VDEV_AUX_TOO_SMALL);
+			dprintf("%s:%d: osize = %llu. Returning %d\n", __func__, __LINE__, osize, EOVERFLOW);
 			return (SET_ERROR(EOVERFLOW));
 		}
 		psize = 0;
@@ -1715,6 +1747,8 @@ vdev_open(vdev_t *vd)
 	if (asize < vd->vdev_min_asize) {
 		vdev_set_state(vd, B_TRUE, VDEV_STATE_CANT_OPEN,
 		    VDEV_AUX_BAD_LABEL);
+		dprintf("%s:%d: asize = %llu, vd->vdev_min_asize = %llu. Returning %d\n",
+			__func__, __LINE__, asize, vd->vdev_min_asize, EINVAL);
 		return (SET_ERROR(EINVAL));
 	}
 
@@ -1726,7 +1760,10 @@ vdev_open(vdev_t *vd)
 		vd->vdev_asize = asize;
 		vd->vdev_max_asize = max_asize;
 		if (vd->vdev_ashift == 0)
+		{
 			vd->vdev_ashift = ashift;
+			TraceEvent(4, "%s:%d: Setting vdev_ashift=%d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu\n", __func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid);
+		}
 
 	} else {
 		/*
@@ -1773,6 +1810,7 @@ vdev_open(vdev_t *vd)
 	    (error = zio_wait(vdev_probe(vd, NULL))) != 0) {
 		vdev_set_state(vd, B_TRUE, VDEV_STATE_FAULTED,
 		    VDEV_AUX_ERR_EXCEEDED);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 
@@ -1785,10 +1823,14 @@ vdev_open(vdev_t *vd)
 	if (vd->vdev_top == vd && vd->vdev_ashift != 0 &&
 	    vd->vdev_alloc_bias == VDEV_BIAS_NONE &&
 	    vd->vdev_aux == NULL) {
+		TraceEvent(4,"%s:%d:Before modifying vdev_ashift= %d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu, spa_min_ashift = %d, spa_max_ashift=%d\n",
+			__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path : "", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid, spa->spa_min_ashift, spa->spa_max_ashift);
 		if (vd->vdev_ashift > spa->spa_max_ashift)
 			spa->spa_max_ashift = vd->vdev_ashift;
 		if (vd->vdev_ashift < spa->spa_min_ashift)
 			spa->spa_min_ashift = vd->vdev_ashift;
+		TraceEvent(4,"%s:%d:After modifying vdev_ashift= %d, vdev_path=%s, vdev_physpath=%s, vdev_guid=%llu, spa_min_ashift = %d, spa_max_ashift=%d\n",
+			__func__, __LINE__, vd->vdev_ashift, vd->vdev_path ? vd->vdev_path :"", vd->vdev_physpath ? vd->vdev_physpath : "", vd->vdev_guid,  spa->spa_min_ashift, spa->spa_max_ashift);
 	}
 
 	/*
@@ -1805,6 +1847,7 @@ vdev_open(vdev_t *vd)
 			spa_async_request(spa, SPA_ASYNC_RESILVER);
 	}
 
+	dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -2247,6 +2290,8 @@ vdev_create(vdev_t *vd, uint64_t txg, boolean_t isreplacing)
 
 	if (error || vd->vdev_state != VDEV_STATE_HEALTHY) {
 		vdev_close(vd);
+		dprintf("%s:%d: vd->vdev_state = %llu. Returning %d\n",
+			__func__, __LINE__, vd->vdev_state, (error ? error : ENXIO));
 		return (error ? error : ENXIO);
 	}
 
@@ -2257,9 +2302,11 @@ vdev_create(vdev_t *vd, uint64_t txg, boolean_t isreplacing)
 	    (error = vdev_label_init(vd, txg, isreplacing ?
 	    VDEV_LABEL_REPLACE : VDEV_LABEL_CREATE)) != 0) {
 		vdev_close(vd);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -2441,6 +2488,7 @@ vdev_dtl_empty(vdev_t *vd, vdev_dtl_type_t t)
 	empty = range_tree_is_empty(rt);
 	mutex_exit(&vd->vdev_dtl_lock);
 
+	dprintf("%s:%d: t = %d. Returning %d\n", __func__, __LINE__, t, empty);
 	return (empty);
 }
 
@@ -2666,8 +2714,10 @@ vdev_dtl_load(vdev_t *vd)
 
 		error = space_map_open(&vd->vdev_dtl_sm, mos,
 		    vd->vdev_dtl_object, 0, -1ULL, 0);
-		if (error)
+		if (error) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 			return (error);
+		}
 		ASSERT(vd->vdev_dtl_sm != NULL);
 
 		mutex_enter(&vd->vdev_dtl_lock);
@@ -2675,6 +2725,7 @@ vdev_dtl_load(vdev_t *vd)
 		    vd->vdev_dtl[DTL_MISSING], SM_ALLOC);
 		mutex_exit(&vd->vdev_dtl_lock);
 
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 
@@ -2684,6 +2735,7 @@ vdev_dtl_load(vdev_t *vd)
 			break;
 	}
 
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 

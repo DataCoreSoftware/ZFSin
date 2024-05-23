@@ -76,7 +76,7 @@ typedef struct osx_kstat {
 	kstat_named_t arc_reduce_dnlc_percent;
 	kstat_named_t arc_lotsfree_percent;
 	kstat_named_t zfs_dirty_data_max;
-	kstat_named_t zfs_dirty_data_sync;
+	kstat_named_t zfs_dirty_data_sync_percent;
 	kstat_named_t zfs_delay_max_ns;
 	kstat_named_t zfs_delay_min_dirty_percent;
 	kstat_named_t zfs_delay_scale;
@@ -154,6 +154,8 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_vdev_initialize_value;
 	kstat_named_t zfs_autoimport_disable;
 	kstat_named_t metaslab_unload_delay;
+	kstat_named_t zfs_total_memory_limit;
+	kstat_named_t cpu_avx_supported;
 } osx_kstat_t;
 
 
@@ -268,6 +270,7 @@ extern uint64_t zfs_disable_removablemedia;
 extern uint64_t zfs_initialize_value;
 extern int zfs_autoimport_disable;
 extern int metaslab_unload_delay;
+extern int cpu_avx_supported;
 
 int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);

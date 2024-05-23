@@ -143,6 +143,7 @@ extern "C" {
 	extern vmem_t *vmem_init(const char *, void *, uint32_t, uint32_t,
 							 vmem_alloc_t *, vmem_free_t *);
 	extern void    vmem_fini(vmem_t *);
+	extern void vmem_timer_fini();
 	extern void vmem_update(void *);
 	extern int vmem_is_populator();
 	extern uint32_t vmem_seg_size;

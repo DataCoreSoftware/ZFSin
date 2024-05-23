@@ -346,6 +346,7 @@ static struct timespec	vmem_update_interval	= {60, 0};	/* vmem_update() every 60
 uint32_t vmem_mtbf;		/* mean time between failures [default: off] */
 uint32_t vmem_seg_size = sizeof (vmem_seg_t);
 volatile boolean_t hash_rescale_exit = FALSE;
+static struct bsd_timeout_wrapper vmem_update_timer;
 
 // must match with include/sys/vmem_impl.h
 static vmem_kstat_t vmem_kstat_template = {
@@ -2282,7 +2283,6 @@ void
 vmem_update(void *dummy)
 {
 	vmem_t *vmp;
-	static struct bsd_timeout_wrapper vmem_update_tm;
 
 	if (hash_rescale_exit == TRUE)
 		return;
@@ -2308,7 +2308,7 @@ vmem_update(void *dummy)
 
 
 	if (hash_rescale_exit == FALSE)
-		(void) bsd_timeout(vmem_update, &vmem_update_tm, &vmem_update_interval);
+		(void) bsd_timeout(vmem_update, dummy, &vmem_update_interval);
 }
 
 void
@@ -3455,7 +3455,7 @@ vmem_init(const char *heap_name,
 	}
 
 	dprintf("SPL: starting vmem_update() thread\n");
-	vmem_update(NULL);
+	vmem_update(&vmem_update_timer);
 
 	return (heap);
 }
@@ -3517,12 +3517,18 @@ static void vmem_fini_void(void *vmp, void *start, uint32_t size)
 }
 
 void
+vmem_timer_fini()
+{
+	bsd_timeout_cancel(&vmem_update_timer);
+}
+
+void
 vmem_fini(vmem_t *heap)
 {
 	struct free_slab *fs;
 	uint64_t total;
 
-//	bsd_untimeout(vmem_update, NULL);
+	bsd_untimeout(vmem_update, &vmem_update_timer);
 
 	dprintf("SPL: %s: stopped vmem_update.  Creating list and walking arenas.\n", __func__);
 
@@ -3551,7 +3557,7 @@ vmem_fini(vmem_t *heap)
 
 	vmem_walk(heap, VMEM_ALLOC, vmem_fini_freelist, heap);
 	vmem_free_span_list();
-	dprintf("\nSPL: %s destroying heap\n", __func__);
+	dprintf("SPL: %s destroying heap\n", __func__);
  	vmem_destroy(heap); // PARENT: spl_heap_arena
 
 	dprintf("SPL: %s: walking spl_heap_arena, aka bucket_heap (pass 1)\n", __func__);
@@ -3657,9 +3663,9 @@ vmem_fini(vmem_t *heap)
 	dprintf("SPL: %s destroying vmem_metadata_arena\n", __func__);
 	vmem_destroy(vmem_metadata_arena); // parent: spl_default_arena
 
-	dprintf("\nSPL: %s destroying spl_default_arena\n", __func__);
+	dprintf("SPL: %s destroying spl_default_arena\n", __func__);
 	vmem_destroy(spl_default_arena); // parent: spl_default_arena_parent
-	dprintf("\nSPL: %s destroying spl_default_arena_parant\n", __func__);
+	dprintf("SPL: %s destroying spl_default_arena_parant\n", __func__);
 	vmem_destroy(spl_default_arena_parent);
 
 	dprintf("SPL: %s destroying vmem_vmem_arena\n", __func__);
@@ -3682,7 +3688,7 @@ vmem_fini(vmem_t *heap)
 	dprintf("vmem_list_lock ");
 	mutex_destroy(&vmem_list_lock);
 
-	dprintf("\nSPL: %s: walking list of live slabs at time of call to %s\n",
+	dprintf("SPL: %s: walking list of live slabs at time of call to %s\n",
 	       __func__, __func__);
 
 	// annoyingly, some of these should be returned to xnu, but

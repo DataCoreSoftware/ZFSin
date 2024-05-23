@@ -26,6 +26,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\zpool_util.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\lib\libnvpair\libnvpair\libnvpair.vcxproj">
@@ -49,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D588961B-6501-4259-AC02-EAD1B465EF89}</ProjectGuid>
@@ -146,7 +148,8 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <UACExecutionLevel>HighestAvailable</UACExecutionLevel>
-      <AdditionalDependencies>mincore_downlevel.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mincore_downlevel.lib;isa-l_crypto_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\libs\ISA-L\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -189,7 +192,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>mincore_downlevel.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mincore_downlevel.lib;isa-l_crypto_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\libs\ISA-L\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

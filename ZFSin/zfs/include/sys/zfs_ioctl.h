@@ -39,6 +39,7 @@
 
 #ifdef _KERNEL
 #include <sys/nvpair.h>
+#include <sys/fs/zfsdi.h>
 #else
 #include <winioctl.h>
 #endif	/* _KERNEL */
@@ -55,6 +56,8 @@ extern "C" {
  * explicit padding so that the 32-bit structure will not be packed more
  * tightly than the 64-bit structure (which requires 64-bit alignment).
  */
+
+
 
 /*
  * Property values for snapdir
@@ -651,6 +654,67 @@ typedef struct zfs_useracct {
 	uint64_t zu_space;
 } zfs_useracct_t;
 
+#define ZPOOL_GET_SIZE_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFF, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+// Input/Output for IOCTL - ZPOOL_GET_SIZE_STATS
+typedef struct {
+	uint8_t targetid;
+	uint8_t lun;
+	char zpool_name[MAXNAMELEN];
+	uint64_t size;
+	uint64_t alloc;
+} zpool_size_stats;
+
+typedef struct
+{
+	uint64_t total;
+	uint64_t count;
+}stat_pair;
+
+
+
+#define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+/* common structure used for zpool and vdev stats */
+typedef struct {
+	unsigned __int64	read_iops;
+	unsigned __int64	write_iops;
+	unsigned __int64	total_iops;
+	unsigned __int64	read_bytes;
+	unsigned __int64	write_bytes;
+	unsigned __int64	total_bytes;
+	unsigned __int64	ddt_entry_count;	/* number of elments in ddt */	/*zpool only*/
+	unsigned __int64	ddt_dspace;			/* size of ddt on disk		*/	/*zpool only*/
+	unsigned __int64	ddt_mspace;			/* size of ddt in-core		*/	/*zpool only*/
+	unsigned __int64	vsx_active_queue_sync_read;
+	unsigned __int64	vsx_active_queue_sync_write;
+	unsigned __int64	vsx_active_queue_async_read;
+	unsigned __int64	vsx_active_queue_async_write;
+	unsigned __int64	vsx_pend_queue_sync_read;
+	unsigned __int64	vsx_pend_queue_sync_write;
+	unsigned __int64	vsx_pend_queue_async_read;
+	unsigned __int64	vsx_pend_queue_async_write;
+	unsigned __int64	vsx_queue_histo_sync_read_time;
+	unsigned __int64	vsx_queue_histo_sync_read_count;
+	unsigned __int64	vsx_queue_histo_async_read_time;
+	unsigned __int64	vsx_queue_histo_async_read_count;
+	unsigned __int64	vsx_queue_histo_sync_write_time;
+	unsigned __int64	vsx_queue_histo_sync_write_count;
+	unsigned __int64	vsx_queue_histo_async_write_time;
+	unsigned __int64	vsx_queue_histo_async_write_count;
+	unsigned __int64	vsx_total_histo_read_time;
+	unsigned __int64	vsx_total_histo_read_count;
+	unsigned __int64	vsx_total_histo_write_time;
+	unsigned __int64	vsx_total_histo_write_count;
+	unsigned __int64	vsx_disk_histo_read_time;
+	unsigned __int64	vsx_disk_histo_read_count;
+	unsigned __int64	vsx_disk_histo_write_time;
+	unsigned __int64	vsx_disk_histo_write_count;
+	unsigned __int64	dp_dirty_total_io;		/*zpool only*/
+	char zpool_name[MAXNAMELEN];		/*zpool only*/
+} zpool_perf_counters;
+
+
 #define	ZFSDEV_MAX_MINOR	(1 << 16)
 #define	ZFS_MIN_MINOR	(ZFSDEV_MAX_MINOR + 1)
 
@@ -671,6 +735,7 @@ extern int zfs_secpolicy_destroy_perms(const char *, cred_t *);
 extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
 extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
+extern void latency_stats(uint64_t* histo, unsigned int buckets, stat_pair* lat);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,
@@ -703,6 +768,19 @@ extern uint64_t zfs_ioc_unregister_fs(void);
 extern int zfs_vnop_force_formd_normalized_output;
 
 DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
+
+NTSTATUS NTAPI
+ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context);
+
+void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData);
+void ZFSinPerfVdevCollect(PCW_MASK_INFORMATION CollectData);
+void ZFSinCachePerfCollect(PCW_MASK_INFORMATION CollectData);
+
+PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName);
+
+void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
+void ZFSinPerfVdevEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
+void ZFSinCachePerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 
 #endif	/* _KERNEL */
 

@@ -77,7 +77,8 @@
 #include <vm/seg_kmem.h>
 
 #include <Trace.h>
-
+#include <sys/arc.h>
+#include <sys/zil.h>
 /*
 * Global lock to protect the AVL trees and kstat_chain_id.
 */
@@ -1918,7 +1919,7 @@ int spl_kstat_chain_id(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION I
 	ASSERT3U(IrpSp->Parameters.DeviceIoControl.OutputBufferLength, >=, sizeof(ksp));
 	ddi_copyout(&ksp, IrpSp->Parameters.DeviceIoControl.Type3InputBuffer,
 		sizeof(ksp), 0);
-	dprintf("%s: returning kstat_chain_id %d\n", __func__, kstat_chain_id);
+	dprintf("%s:%d: returning kstat_chain_id %d\n", __func__, __LINE__, kstat_chain_id);
 	return 0;
 }
 
@@ -1938,4 +1939,124 @@ int spl_kstat_write(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpS
 	ksp = (kstat_t *)IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = write_kstat_data(&ksp->ks_returnvalue, (void *)ksp, 0, NULL);
 	return 0;
+}
+
+/* Added comments inline referring to perl arcstat.pl */
+void cache_counters_perfmon(cache_counters* perf)
+{
+	int rcdone = 0, wcdone = 0;
+	ekstat_t* e;
+	mutex_enter(&kstat_chain_lock);
+	for (e = avl_first(&kstat_avl_bykid); e != NULL && (!rcdone || !wcdone); e = avl_walk(&kstat_avl_bykid, e, AVL_AFTER))
+	{
+		kstat_t* current = &e->e_ks;
+		if (current->ks_data && !strcmp(current->ks_module, "zfs") && !strcmp(current->ks_name, "arcstats"))
+		{
+			arc_stats_t* ptr = current->ks_data;
+			//$v{ "hits" } = $d{ "hits" } / $int;
+			perf->arcstat_hits = ptr->arcstat_hits.value.ui64;
+
+			//$v{"miss"} = $d{"misses"}/$int;
+			perf->arcstat_misses = ptr->arcstat_misses.value.ui64;
+
+			//$v{"dhit"} = ($d{"demand_data_hits"} + $d{"demand_metadata_hits"})/$int;
+			perf->arcstat_total_demand_hits = ptr->arcstat_demand_data_hits.value.ui64 + ptr->arcstat_demand_metadata_hits.value.ui64;
+
+			//$v{"dmis"} = ($d{"demand_data_misses"}+$d{"demand_metadata_misses"})/$int;
+			perf->arcstat_total_demand_miss = ptr->arcstat_demand_data_misses.value.ui64 + ptr->arcstat_demand_metadata_misses.value.ui64;
+
+			//$v{"phit"}=($d{"prefetch_data_hits"} + $d{"prefetch_metadata_hits"})/$int;
+			perf->arcstat_perfetch_hits = ptr->arcstat_prefetch_data_hits.value.ui64 + ptr->arcstat_prefetch_metadata_hits.value.ui64;
+
+			//$v{ "pmis" } = ($d{ "prefetch_data_misses" } +$d{ "prefetch_metadata_misses" }) / $int;
+			perf->arcstat_perfetch_miss = ptr->arcstat_prefetch_data_misses.value.ui64 + ptr->arcstat_prefetch_metadata_misses.value.ui64;
+
+			//$v{"pread"} = $v{"phit"} + $v{"pmis"};
+			perf->arcstat_perfetch_ps = perf->arcstat_perfetch_hits + perf->arcstat_perfetch_miss;
+
+			//$v{"dread"} = $v{"dhit"} + $v{"dmis"};
+			perf->arcstat_demand_ps = perf->arcstat_total_demand_hits + perf->arcstat_total_demand_miss;
+
+			//$v{"size"} = $cur{"size"};
+			perf->arcstat_size = ptr->arcstat_size.value.ui64;
+
+			//$v{"tsize"} = $cur{"c"};
+			perf->arcstat_c = ptr->arcstat_c.value.ui64;
+
+			//$v{"mfu"} = $d{"hits"}/$int;
+			perf->arcstat_mfu_hits = ptr->arcstat_mfu_hits.value.ui64;
+
+			//$v{"mru"} = $d{"mru_hits"}/$int;
+			perf->arcstat_mru_hits = ptr->arcstat_mru_hits.value.ui64;
+
+			//$v{"mrug"} = $d{"mru_ghost_hits"}/$int;
+			perf->arcstat_mru_ghost_hits = ptr->arcstat_mru_ghost_hits.value.ui64;
+
+			//$v{"mfug"} = $d{"mfu_ghost_hits"}/$int;
+			perf->arcstat_mfu_ghost_hits = ptr->arcstat_mfu_ghost_hits.value.ui64;
+
+			//$v{"eskip"} = $d{"evict_skip"}/$int;
+			perf->arcstat_evict_skip = ptr->arcstat_evict_skip.value.ui64;
+
+			//$v{"mtxmis"} = $d{"mutex_miss"}/$int;
+			perf->arcstat_mutex_miss = ptr->arcstat_mutex_miss.value.ui64;
+
+			//$v{"comprs"} = $cur{"compressed_size"};
+			perf->arcstat_compressed_size = ptr->arcstat_compressed_size.value.ui64;
+
+			//$v{"uncomp"} = $cur{"uncompressed_size"};
+			perf->arcstat_uncompressed_size = ptr->arcstat_uncompressed_size.value.ui64;
+
+			//$v{"l2hits"} = $d{"l2_hits"}/$int;
+			perf->arcstat_l2_hits = ptr->arcstat_l2_hits.value.ui64;
+
+			//$v{ "l2miss" } = $d{ "l2_misses" } / $int;
+			perf->arcstat_l2_misses = ptr->arcstat_l2_misses.value.ui64;
+
+			//$v{"l2read"} = $d{"l2_read_bytes"}/$int;
+			perf->arcstat_l2_read_bytes = ptr->arcstat_l2_read_bytes.value.ui64;
+
+			//$v{"l2write"} = $d{"l2_write_bytes"}/$int;
+			perf->arcstat_l2_write_bytes = ptr->arcstat_l2_write_bytes.value.ui64;
+
+			//$v{l2 access per second} = $v{"l2hits"} + $v{ "l2miss" }
+			perf->arcstat_l2_access_ps = perf->arcstat_l2_hits + perf->arcstat_l2_misses;
+
+			//$v{ "read" } = $v{ "hits" } +$v{ "miss" };
+			perf->arcstat_read_ps = perf->arcstat_hits + perf->arcstat_misses;
+
+			//$v{"mhit"}=($d{"prefetch_metadata_hits"}+$d{"demand_metadata_hits"})/$int;
+			perf->arcstat_metadata_hit_ps = ptr->arcstat_prefetch_metadata_hits.value.ui64 + ptr->arcstat_demand_metadata_hits.value.ui64;
+
+			//$v{"mmis"}=($d{"prefetch_metadata_misses"} +$d{ "demand_metadata_misses" }) / $int;
+			perf->arcstat_metadata_miss_ps = ptr->arcstat_prefetch_metadata_misses.value.ui64 + ptr->arcstat_demand_metadata_misses.value.ui64;
+
+			//$v{"mread"} = $v{"mhit"} + $v{"mmis"};
+			perf->arcstat_metadata_accesses_ps = perf->arcstat_metadata_hit_ps + perf->arcstat_metadata_miss_ps;
+
+			//$v{"ovrhd"} = $cur{"overhead_size"};
+			perf->arcstat_overhead_size = ptr->arcstat_overhead_size.value.i64;
+
+			rcdone = 1;
+		}
+		else if (current->ks_data && !strcmp(current->ks_module, "zfs") && !strcmp(current->ks_name, "zil")) {
+			zil_stats_t* ptr = current->ks_data;
+			perf->zil_commit_count = ptr->zil_commit_count.value.ui64;
+			perf->zil_commit_writer_count = ptr->zil_commit_writer_count.value.ui64;
+			perf->zil_itx_count = ptr->zil_itx_count.value.ui64;
+			perf->zil_itx_indirect_count = ptr->zil_itx_indirect_count.value.ui64;
+			perf->zil_itx_indirect_bytes = ptr->zil_itx_indirect_bytes.value.ui64;
+			perf->zil_itx_copied_count = ptr->zil_itx_copied_count.value.ui64;
+			perf->zil_itx_copied_bytes = ptr->zil_itx_copied_bytes.value.ui64;
+			perf->zil_itx_needcopy_count = ptr->zil_itx_needcopy_count.value.ui64;
+			perf->zil_itx_needcopy_bytes = ptr->zil_itx_needcopy_bytes.value.ui64;
+			perf->zil_itx_metaslab_normal_count = ptr->zil_itx_metaslab_normal_count.value.ui64;
+			perf->zil_itx_metaslab_normal_bytes = ptr->zil_itx_metaslab_normal_bytes.value.ui64;
+			perf->zil_itx_metaslab_slog_count = ptr->zil_itx_metaslab_slog_count.value.ui64;
+			perf->zil_itx_metaslab_slog_bytes = ptr->zil_itx_metaslab_slog_bytes.value.ui64;
+
+			wcdone = 1;
+		}
+	}
+	mutex_exit(&kstat_chain_lock);
 }

@@ -90,9 +90,11 @@
 
 #include "zfs_namecheck.h"
 
+unsigned int zvol_threads = 32;
 uint64_t zvol_inhibit_dev = 0;
 dev_info_t zfs_dip_real = { 0 };
 dev_info_t *zfs_dip = &zfs_dip_real;
+taskq_t *zvol_taskq;
 extern int zfs_major;
 extern int zfs_bmajor;
 
@@ -183,11 +185,15 @@ zvol_size_changed(zvol_state_t *zv, uint64_t volsize)
 int
 zvol_check_volsize(uint64_t volsize, uint64_t blocksize)
 {
-	if (volsize == 0)
+	if (volsize == 0) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
-	if (volsize % blocksize != 0)
+	if (volsize % blocksize != 0) {
+		dprintf("%s:%d: volsize: %llu blocksize: %llu, Returning error %d\n", __func__, __LINE__, volsize, blocksize, EINVAL);
 		return (EINVAL);
+	}
 
 #ifdef _ILP32XXX
 	if (volsize - 1 > SPEC_MAXOFFSET_T)
@@ -200,9 +206,11 @@ int
 zvol_check_volblocksize(uint64_t volblocksize)
 {
 	if (volblocksize < SPA_MINBLOCKSIZE ||
-	    volblocksize > SPA_MAXBLOCKSIZE ||
-	    !ISP2(volblocksize))
+		volblocksize > SPA_MAXBLOCKSIZE ||
+		!ISP2(volblocksize)) {
+		dprintf("%s:%d: volblocksize: %llu, Returning %d \n", __func__, __LINE__, volblocksize, EDOM);
 		return (EDOM);
+	}
 
 	return (0);
 }
@@ -634,7 +642,8 @@ zvol_create_minor_impl(const char *name)
 #endif
 	(void) strlcpy(zv->zv_name, name, MAXPATHLEN);
 	zv->zv_min_bs = DEV_BSHIFT;
-	zv->zv_minor = minor;
+	// zv->zv_minor = minor; minor init moved at the end of the routine. this way it signifies to zv context search routines 
+	// that the zvol is completely opened and ready.
 	zv->zv_objset = os;
 	if (dmu_objset_is_snapshot(os) || !spa_writeable(dmu_objset_spa(os)))
 		zv->zv_flags |= ZVOL_RDONLY;
@@ -693,11 +702,15 @@ zvol_create_minor_impl(const char *name)
 
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
-	
 	if (error == 0) {
+		zv->zv_minor = minor; // zvol good to go and fully opened.
 		// Assign new TargetId and Lun
 		wzvol_assign_targetid(zv);
 	}
+
+	dprintf("%s:%d before returning zvol '%s',targetid=%d, lun_id=%d, zv_minor=%d, total_opens=%d, vol size=%llu, flags=%d\n",
+		__func__, __LINE__, zv->zv_name, zv->zv_target_id, zv->zv_lun_id, zv->zv_minor,
+		zv->zv_total_opens, zv->zv_volsize, zv->zv_flags);
 
 	return (0);
 }
@@ -2313,7 +2326,7 @@ zvol_read(zvol_state_t *zv, uio_t *uio, int flags)
 		if (bytes > volsize - uio_offset(uio))
 			bytes = volsize - uio_offset(uio);
 
-		dprintf("%s %llu len %llu bytes %llu\n",
+		TraceEvent(TRACE_VERBOSE,"%s:%d: %s %llu len %llu bytes %llu\n", __func__, __LINE__,
 		    "zvol_read_iokit: position",
 		    uio_offset(uio), uio_resid(uio), bytes);
 
@@ -2357,8 +2370,8 @@ zvol_write(zvol_state_t *zv, uio_t *uio, int flags)
 	if (uio_offset(uio) >= volsize)
 		return (EIO);
 
-	dprintf("zvol_write_iokit(offset "
-	    "0x%llx bytes 0x%llx)\n", uio_offset(uio), uio_resid(uio));
+	TraceEvent(TRACE_NOISY,"%s:%d: zvol_write_iokit(offset "
+	    "0x%llx bytes 0x%llx)\n", __func__, __LINE__, uio_offset(uio), uio_resid(uio));
 
 	sync = (flags & ZVOL_WRITE_SYNC) ||
 	    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
@@ -2841,7 +2854,13 @@ zvol_busy(void)
 int
 zvol_init(void)
 {
+	int threads = MIN(MAX(zvol_threads, 1), 1024);
+
 	dprintf("zvol_init\n");
+	zvol_taskq = taskq_create(ZVOL_DRIVER, threads, maxclsyspri,
+		threads * 2, INT_MAX, 0);
+	if (zvol_taskq == NULL)
+		return (-ENOMEM);
 	VERIFY(ddi_soft_state_init(&zfsdev_state, sizeof (zfs_soft_state_t),
 	    1) == 0);
 #ifdef illumos
@@ -2859,4 +2878,23 @@ zvol_fini(void)
 	mutex_destroy(&zfsdev_state_lock);
 #endif
 	ddi_soft_state_fini(&zfsdev_state);
+	taskq_destroy(zvol_taskq);
+}
+
+
+/* ZFS ZVOLDI */
+_Function_class_(PINTERFACE_REFERENCE)
+void IncZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_inc_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
+}
+
+_Function_class_(PINTERFACE_REFERENCE)
+void DecZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_dec_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
 }
