@@ -398,12 +398,14 @@ class ResultCreation():
             list_lines = file1.readlines()
             file1.close()
             for index, val in enumerate(list_lines):
-                if val.strip() == '<td class="u-align-center u-border-1 '\
-                    'u-border-grey-dark-1 u-table-cell"></td>':
-                    data_ = '<td class="u-align-center u-border-1 '\
-                        'u-border-grey-dark-1 u-table-cell">' + str(self.data_put[0]) + '</td>'
+                if val.strip() == '<td class="u-border-1 u-border-grey-dark-1'\
+                    ' u-table-cell"></td>':
+                    data_ = '<td class="u-border-1 u-border-grey-dark-1'\
+                        ' u-table-cell">' + str(self.data_put[0]) + '</td>'
                     list_lines[index] = data_
                     self.data_put.pop(0)
+                    if len(self.data_put) == 0:
+                        break
             with open(self.destiny, "w") as file:
                 for item in list_lines:
                     if item.endswith("\n"):
@@ -431,7 +433,7 @@ class ResultCreation():
               'VdBench Result Creation Started************************\n')
         LogCreat().logger_info.info('************************'\
                                     'VdBench Result Creation Started************************')
-        update = '<td class="u-border-1 u-border-grey-30 u-table-cell u-table-cell-'
+        update = '<td class="u-border-1 u-border-grey-dark-1 u-table-cell-'
         file1 = open(self.path, "r+")
         list_lines = file1.readlines()
         file1.close()
@@ -439,8 +441,7 @@ class ResultCreation():
         for index, val in enumerate(list_lines):
             vsi_new = update + str(number)
             if vsi_new in val.strip():
-                data = '<td class="u-border-1 u-border-grey-30'\
-                    ' u-table-cell u-table-cell-' + str(number)
+                data = '<td class="u-border-1 u-border-grey-dark-1 u-table-cell-' + str(number)
                 data = data + '">' + self.merge_list[0] + "</td>"
                 list_lines[index] = data
                 self.merge_list.pop(0)
@@ -459,8 +460,8 @@ class ResultCreation():
                 'src="nicepage.js" defer=""></script>':
                 list_lines[index] = '<script class="u-script" type="text/javascript" '\
                     'src="href="' + path_html + 'nicepage.js" defer=""></script>'
-            if val.strip() == '<img class="u-image u-image-1" src="images/new.png" '\
-                'data-image-width="539" data-image-height="136">':
+            if val.strip() == '<img class="u-expanded-width u-image u-image-default u-image-1" src="images/new.png" '\
+                'alt="" data-image-width="811" data-image-height="163">':
                 list_lines[index] = '<img class="u-image u-image-1" '\
                     'src="'+path_html + 'images/new.png" '\
                         'data-image-width="539" data-image-height="136">'
@@ -492,16 +493,16 @@ class ResultCreation():
         '''
         number = 0
         if workload.lower().strip() == 'vsi':
-            start = 10
+            start = 11
             number = self.repeate_loop(number, virtualdisk, start)
         elif workload.lower().strip() == 'vdi':
-            start = 82
+            start = 83
             number = self.repeate_loop(number, virtualdisk, start)
         elif workload.lower().strip() == 'oracle':
-            start = 154
+            start = 155
             number = self.repeate_loop(number, virtualdisk, start)
         else:
-            start = 226
+            start = 227
             number = self.repeate_loop(number, virtualdisk, start)
         return number
     def repeate_loop(self, number, virtualdisk, start):
@@ -539,4 +540,3 @@ class ResultCreation():
         else:
             number = start
         return number
-    
