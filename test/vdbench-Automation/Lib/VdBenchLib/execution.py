@@ -942,7 +942,7 @@ class Test_ILDC:
         vd_payload = {
             "Name": virtual_disk+"_VD",
             "Description": "Description of virtual disk",
-            "Size": "100GB",
+            "Size": "500GB",
             "SectorSize": "512B",
             "PoolVolumeType": "0",  # 0-stripped, 1-spanned,
             "Pool":self.pool_id,
