@@ -230,7 +230,7 @@ class ResultCreation():
         ssy = str(float(ssy)) + ' GB'
         zfs_mem_limit = str(float(zfs_mem_limit)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
-                         str(ssy), primaycach, ram_, sync, '500GB', zfs_mem_limit,  status_encrp, co_disks, d_pool_disks, str(raid_level_), status_slog, status_l2arc, status_mirror_slog ]
+                         str(ssy), primaycach, ram_, sync, '100GB', zfs_mem_limit,  status_encrp, co_disks, d_pool_disks, str(raid_level_), status_slog, status_l2arc, status_mirror_slog ]
     def get_ssy_cache(self):
         '''
         This method gets SSY Cache from DcsAddMem
