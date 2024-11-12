@@ -274,5 +274,6 @@ class Run():
         self.set_config_val('zfs value', 'primarycache', 'default')
         self.set_config_val('zfs value', 'sync', 'default')
         self.set_config_val('zfs value', 'compression', 'default')
+        self.set_config_val('zfs value', 'zvolsize', 'default')
 if __name__ == "__main__":
     Run()

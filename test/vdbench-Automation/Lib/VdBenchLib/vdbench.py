@@ -220,6 +220,8 @@ class ResultCreation():
         # available = res.json()[0]['AvailableSystemMemory']['Value']
         sync = res.json()[0]['IldcConfigurationData']['IldcSyncMode']
         primaycach = res.json()[0]['IldcConfigurationData']['IldcPrimaryCacheMode']
+        zvolsize = str(round(int(res.json()[0]['IldcConfigurationData']['IldcDefaultVolSize']['Value'])/1073741824, 2))
+        zvolsize = zvolsize + 'GB'
         if configur.get('zfs value', 'primarycache').lower() != 'default':
             primaycach = configur.get('zfs value', 'primarycache').lower()
         zfs = round((float(self.zfs_max)/1073741824),2)
@@ -230,7 +232,7 @@ class ResultCreation():
         ssy = str(float(ssy)) + ' GB'
         zfs_mem_limit = str(float(zfs_mem_limit)) + ' GB'
         self.data_put = [self.build, host, str(zfs),
-                         str(ssy), primaycach, ram_, sync, '500GB', zfs_mem_limit,  status_encrp, co_disks, d_pool_disks, str(raid_level_), status_slog, status_l2arc, status_mirror_slog ]
+                         str(ssy), primaycach, ram_, sync, '500GB', zfs_mem_limit,  status_encrp, co_disks, d_pool_disks, str(raid_level_), status_slog, status_l2arc, status_mirror_slog, zvolsize ]
     def get_ssy_cache(self):
         '''
         This method gets SSY Cache from DcsAddMem
@@ -499,10 +501,10 @@ class ResultCreation():
             start = 83
             number = self.repeate_loop(number, virtualdisk, start)
         elif workload.lower().strip() == 'oracle':
-            start = 155
+            start = 227
             number = self.repeate_loop(number, virtualdisk, start)
         else:
-            start = 227
+            start = 155
             number = self.repeate_loop(number, virtualdisk, start)
         return number
     def repeate_loop(self, number, virtualdisk, start):
