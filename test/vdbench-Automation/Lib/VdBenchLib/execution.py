@@ -50,6 +50,7 @@ class Test_ILDC:
         self.slog = []
         self.l2arc = []
         self.server_name = ''
+        self.version_PSP = ''
         self.zfs_zvol = []
         self.mirror_slog = []
     def start(self):
@@ -115,6 +116,10 @@ class Test_ILDC:
             self.config_dict['primaycach'] = configur.get('zfs value', 'primarycache')
             self.config_dict['zfs_sync'] = configur.get('zfs value', 'sync')
             self.config_dict['zfs_compression'] = configur.get('zfs value', 'compression')
+            self.config_dict['zfs_zvolsize'] = configur.get('zfs value', 'zvolsize')
+            self.set_zvolsize(True)
+        else:
+            self.set_zvolsize(False)
         if configur.get('first run', 'enryption_flag').strip() == 'True':
             self.encryption_setting('aes-256-gcm')
             LogCreat().logger_info.info('Encryption at zpool level set as aes-256-gcm')
@@ -214,6 +219,39 @@ class Test_ILDC:
         process.stdin.write("connect-dcsserver" + "\n")
         process.stdin.write(export_mode_cmd + "\n")
         process.stdin.write(encry + "\n")
+        process.stdin.close()
+    def set_zvolsize(self, modify):
+        '''
+        This function set size of zvols
+
+        Returns
+        -------
+        None.
+
+        '''
+        version_psp_num = int(self.version_PSP.split()[-1])
+        if version_psp_num > 17:
+            size = '500GB'
+        else :
+            size = '1TB'
+        msg = "Setting Zvol size to "
+        if modify == True and self.config_dict['zfs_zvolsize'].lower() != 'default':
+            size = self.config_dict['zfs_zvolsize']
+            print(msg + size)
+        
+        LogCreat().logger_info.info(msg + size)
+            
+        password = self.extract_password()
+        cmd = "powershell.exe -File \'C:/Program Files/DataCore/Powershell Support\Register-DcsCmdlets.ps1\'" + "\n"
+        export_mode_cmd = 'Enable-DcsExpertMode -SecurityCode ' + password
+        zvolsize_cmd = 'set-dcsserverildcproperties -Server ' + self.server_name + ' -IldcDefaultVolSize '+ size
+        process = subprocess.Popen(['powershell', cmd], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8',
+                                   universal_newlines=True, bufsize=0,
+                                   creationflags=subprocess.CREATE_NEW_CONSOLE)
+        process.stdin.write("connect-dcsserver" + "\n")
+        process.stdin.write(export_mode_cmd + "\n")
+        process.stdin.write(zvolsize_cmd + "\n")
         process.stdin.close()
     def run(self):
         '''
@@ -879,6 +917,7 @@ class Test_ILDC:
         res = ILDC().do_ssy_details(uri, header=None)
         self.server_id = res.json()[0]['Id']
         self.server_name = res.json()[0]['HostName']
+        self.version_PSP = res.json()[0]['ProductVersion']
         msg = 'Get server details'
         if str(res) == '<Response [200]>':
             LogCreat().logger_info.info(msg)
