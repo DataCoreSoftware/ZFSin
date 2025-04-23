@@ -45,7 +45,7 @@ def iter_files(path, recursive=False):
 @click.command(cls=DefaultHelp)
 @click.argument(
     "paths",
-    type=click.Path(exists=True, file_okay=True, dir_okay=True, readable=False, resolve_path=True), nargs=-1,
+    type=click.Path(exists=True, file_okay=True, dir_okay=True, readable=False), nargs=-1,
     required=True
 )
 @click.option(
@@ -85,7 +85,7 @@ def iter_files(path, recursive=False):
     show_default=True
 )
 @click.option(
-    "-raw",
+    "--raw",
     help="To scan raw disk",
     is_flag=True,
     default=False,
@@ -126,6 +126,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             m = 1000    # 1 in m chunks are included in the sample
             x = random.randint(0, m - 1)    # random integer between 0 and m.
 
+        logging.debug(f"Sampling parameters: m={m}, x={x}")
+
         '''
         m and x together act as a filter and decide whether a chunk will be stored in the sample
         '''
@@ -162,6 +164,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                             dsize = int(d.size)
                             sizes.append(dsize)
                             bytes_total += dsize
+                logging.debug(f"Raw disk path: {path}")
+                logging.debug(f"Disk size: {sizes}")
 
             if not sizes or not bytes_total:
                 click.echo("Wrong path or incorrect type.")
@@ -180,7 +184,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False) as pbar:
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
-                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size)
+                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, lock)
                         i += 1
 
             t.stop()
@@ -208,11 +212,11 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                     click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
                     click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
-
+                    
                     # Saving the output in a json file.
                     output = "DedupEstimationResult.txt"
-                    with open(os.path.join(outpath, output), "w") as outfile:
-                        outfile.write(json.dumps(results, indent=2))
+                    with open(os.path.join(outpath,output), "w") as outfile:
+                        outfile.write(json.dumps(results, indent = 2))
                 else:
                     print("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator")
             else:
