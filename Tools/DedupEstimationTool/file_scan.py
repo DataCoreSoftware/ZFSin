@@ -56,7 +56,7 @@ def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar,
                 try:
                     f = open(file[0], 'r')
                     f.close()
-                    executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size).add_done_callback(handler)
+                    executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, pbar).add_done_callback(handler)
                 except Exception as e:
                     with lock:
                         config.files_skipped += 1
@@ -64,10 +64,10 @@ def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar,
     else:
         with ThreadPoolExecutor(max_workers=threads) as executor:
             for file in iter_files(path, recursive):
-                executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size).add_done_callback(handler)
+                executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, pbar).add_done_callback(handler)
 
 
-def process_file(file, filesize, chunksize, hash_function, m, x, sample_size):
+def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pbar):
     """
     Process the file and add the hash of unique chunks of the file into the global fingerprints.
     """
@@ -94,6 +94,8 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size):
         config.chunk_count += filesize // chunksize
         if filesize % chunksize != 0:
             config.chunk_count += 1
+
+        pbar.update(1)  # Update the progress bar for each file processed
 
     logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
 

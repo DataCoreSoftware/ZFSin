@@ -179,12 +179,16 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             if sample_size != -1:
                 bytes_total = sample_size
 
+            logging.debug(f"Starting disk scan now... calling ThreadPoolExecutor with max_workers={path_count}")
+
             i = 0
             bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}]'
             with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False) as pbar:
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
+                        logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
                         executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, lock)
+                        logging.debug(f"Submitted disk scan for {path}")
                         i += 1
 
             t.stop()
@@ -193,7 +197,9 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 if sample_size != -1:
                     bytes_total = config.bytes_total
 
-            bytes_unique = min(len(config.fingerprints) * m * size, bytes_total)
+            logging.debug(f"Unique chunks: {len(config.fingerprints)}")
+            unique_chunks = set(config.fingerprints)
+            bytes_unique = min(len(unique_chunks) * m * size, bytes_total)
 
             if bytes_total:
                 if bytes_unique:
@@ -201,8 +207,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                     results['paths'] = list(paths)
                     time_taken = int(Timer.timers.mean("scan")) + 0.1
                     data_per_s = bytes_total / time_taken
-                    click.echo("Unique Chunks:\t{}".format(intcomma(len(config.fingerprints))))
-                    results["unique_chunks"] = intcomma(len(config.fingerprints))
+                    click.echo("Unique Chunks:\t{}".format(intcomma(len(unique_chunks))))
+                    results["unique_chunks"] = intcomma(len(unique_chunks))
                     click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
                     click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
