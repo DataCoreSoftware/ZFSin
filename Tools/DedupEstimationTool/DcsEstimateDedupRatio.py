@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.debug)
 
 from fastcdc.utils import DefaultHelp, supported_hashes
 
@@ -126,7 +126,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             m = 1000    # 1 in m chunks are included in the sample
             x = random.randint(0, m - 1)    # random integer between 0 and m.
 
-        logging.debug(f"Sampling parameters: m={m}, x={x}")
+        #logging.debug(f"Sampling parameters: m={m}, x={x}")
 
         '''
         m and x together act as a filter and decide whether a chunk will be stored in the sample
@@ -164,8 +164,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                             dsize = int(d.size)
                             sizes.append(dsize)
                             bytes_total += dsize
-                logging.debug(f"Raw disk path: {path}")
-                logging.debug(f"Disk size: {sizes}")
+                #logging.debug(f"Raw disk path: {path}")
+                #logging.debug(f"Disk size: {sizes}")
 
             if not sizes or not bytes_total:
                 click.echo("Wrong path or incorrect type.")
@@ -179,16 +179,16 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             if sample_size != -1:
                 bytes_total = sample_size
 
-            logging.debug(f"Starting disk scan now... calling ThreadPoolExecutor with max_workers={path_count}")
+            #logging.debug(f"Starting disk scan now... calling ThreadPoolExecutor with max_workers={path_count}")
 
             i = 0
             bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}]'
             with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False) as pbar:
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
-                        logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
+                        #logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
                         executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, lock)
-                        logging.debug(f"Submitted disk scan for {path}")
+                        #logging.debug(f"Submitted disk scan for {path}")
                         i += 1
 
             t.stop()
@@ -197,7 +197,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 if sample_size != -1:
                     bytes_total = config.bytes_total
 
-            logging.debug(f"Unique chunks: {len(config.fingerprints)}")
+            #logging.debug(f"Unique chunks: {len(config.fingerprints)}")
             unique_chunks = set(config.fingerprints)
             bytes_unique = min(len(unique_chunks) * m * size, bytes_total)
 

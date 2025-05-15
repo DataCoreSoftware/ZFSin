@@ -9,14 +9,14 @@ import traceback
 READ_BLOCK_SIZE = 1024 * 1024           # 1MB read chunks
 FASTCDC_WINDOW_SIZE = 16 * 1024 * 1024  # 16MB window for CDC
 OVERLAP_SIZE = 2 * 1024 * 1024          # 2MB overlap for chunk boundary safety
-#logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.debug)
 
 def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, lock):
     """
     Orchestrates the parallel processing of a disk by dividing it based on the number of threads
     and assigning each part to a thread for processing.
     """
-    logging.debug(f"Starting process_disk for {disk}")
+    #logging.debug(f"Starting process_disk for {disk}")
     #print("Starting process_disk for", disk)
 
     # Adjust disk size based on sample_size
@@ -28,7 +28,7 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
     size_per_thread = (disk_size + threads - 1) // threads
     size_per_thread -= size_per_thread % chunksize  # Ensure size_per_thread is a multiple of chunksize
     
-    logging.debug(f"Disk size: {disk_size}, Size per thread: {size_per_thread}")
+    #logging.debug(f"Disk size: {disk_size}, Size per thread: {size_per_thread}")
 
     # Use ThreadPoolExecutor to process parts in parallel
     with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -38,7 +38,7 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
             end_offset = min((i + 1) * size_per_thread, disk_size)
 
             if start_offset < disk_size:
-                logging.debug(f"Submitting thread {i} with start_offset {start_offset} and end_offset {end_offset}")
+                #logging.debug(f"Submitting thread {i} with start_offset {start_offset} and end_offset {end_offset}")
                 try:
                     futures.append(
                         executor.submit(
