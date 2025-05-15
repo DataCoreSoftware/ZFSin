@@ -5,15 +5,15 @@ import logging
 import threading
 from io import BytesIO
 
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 
 def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, lock):
     """
     Orchestrates the parallel processing of a disk by dividing it based on the number of threads
     and assigning each part to a thread for processing.
     """
-    logging.debug(f"Starting process_disk for {disk}")
-    print("Starting process_disk for", disk)
+    #logging.debug(f"Starting process_disk for {disk}")
+    #print("Starting process_disk for", disk)
 
     # Adjust disk size based on sample_size
     if sample_size != -1:
@@ -25,12 +25,12 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
     size_per_thread -= size_per_thread % chunksize  # Ensure size_per_thread is a multiple of chunksize
     iters = size_per_thread // chunksize  # Calculate iterations per thread
 
-    logging.debug(f"Disk size: {disk_size}, Size per thread: {size_per_thread}, Iterations per thread: {iters}")
+    #logging.debug(f"Disk size: {disk_size}, Size per thread: {size_per_thread}, Iterations per thread: {iters}")
 
     # Open the file handle
     try:
         with open(disk, "rb") as handle:
-            logging.debug(f"Opened raw disk {disk} successfully")
+            #logging.debug(f"Opened raw disk {disk} successfully")
             # Use ThreadPoolExecutor to process parts in parallel
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = []
@@ -39,7 +39,7 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
                     end_offset = min((i + 1) * size_per_thread, disk_size)
 
                     if start_offset < disk_size:
-                        logging.debug(f"Submitting thread {i} with start_offset {start_offset} and end_offset {end_offset}")
+                        #logging.debug(f"Submitting thread {i} with start_offset {start_offset} and end_offset {end_offset}")
                         try:
                             futures.append(
                                 executor.submit(
@@ -77,7 +77,7 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
     
     
     with open(disk, "rb") as handle:
-        logging.debug(f"Thread {threading.current_thread().name} started processing from offset {start_offset} to {end_offset}")
+        #logging.debug(f"Thread {threading.current_thread().name} started processing from offset {start_offset} to {end_offset}")
         handle.seek(start_offset)
         processed = 0  # Bytes processed
 
