@@ -4,8 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import sys
 import os
+import traceback
 
-READ_BLOCK_SIZE = 1024 * 1024  # 1 MiB per read
+READ_BLOCK_SIZE = 1024 * 1024           # 1MB read chunks
+FASTCDC_WINDOW_SIZE = 16 * 1024 * 1024  # 16MB window for CDC
+OVERLAP_SIZE = 2 * 1024 * 1024          # 2MB overlap for chunk boundary safety
 #logging.basicConfig(level=logging.DEBUG)
 
 def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, lock):
@@ -62,23 +65,6 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
             except Exception as e:
                 logging.error(f"Error in thread execution: {e}")
 
-def read_large_range(handle, start_offset, total_bytes):
-    os.lseek(handle, start_offset, os.SEEK_SET)
-
-    data = bytearray()
-    bytes_left = total_bytes
-
-    while bytes_left > 0:
-        read_size = min(READ_BLOCK_SIZE, bytes_left)
-        chunk = os.read(handle, read_size)
-        if not chunk:
-            break
-        data.extend(chunk)
-        bytes_left -= len(chunk)
-
-    return bytes(data)
-
-
 def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_function, m, x, pbar, sample_size, lock):
     handle = None
     try:
@@ -87,42 +73,77 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
             flags |= os.O_BINARY
 
         handle = os.open(disk, flags)
+        os.lseek(handle, start_offset, os.SEEK_SET)
 
-        # Read disk region in safe blocks
+        buffer = bytearray()
+        processed_bytes = 0
         total_size = end_offset - start_offset
-        part_data = read_large_range(handle, start_offset, total_size)
 
-        # Apply FastCDC
-        try:
-            chunker = fastcdc.fastcdc(part_data, chunksize, chunksize, chunksize, hf=hash_function)
+        while processed_bytes < total_size:
+            try:
+                to_read = min(READ_BLOCK_SIZE, total_size - processed_bytes)
+                chunk = os.read(handle, to_read)
+                if not chunk:
+                    break  # Reached EOF or failed to read
+                buffer.extend(chunk)
+                processed_bytes += len(chunk)
+                pbar.update(len(chunk))
+            except Exception as e:
+                logging.error(f"Error reading at offset {start_offset + processed_bytes}: {e}")
+                logging.error(traceback.format_exc())
+                break
 
-            for chunk in chunker:
-                if int(chunk.hash, 16) % m == x:
-                    with lock:
-                        config.fingerprints.add(int(chunk.hash, 16))
+            # Process CDC when buffer is large enough
+            if len(buffer) >= FASTCDC_WINDOW_SIZE:
+                try:
+                    window = bytes(buffer[:FASTCDC_WINDOW_SIZE])
+                    chunker = fastcdc.fastcdc(window, chunksize, chunksize, chunksize, hf=hash_function)
 
-        except Exception as e:
-            logging.error(f"Error processing chunk: {e}")
+                    for c in chunker:
+                        try:
+                            h = int(c.hash, 16)
+                            if h % m == x:
+                                with lock:
+                                    config.fingerprints.add(h)
+                        except Exception as e:
+                            logging.error(f"Error processing chunk hash: {e}")
+                except Exception as e:
+                    logging.error(f"FastCDC failed on buffer: {e}")
+                    logging.error(traceback.format_exc())
 
-        # Update stats
+                # Slide buffer forward, keeping overlap
+                buffer = buffer[FASTCDC_WINDOW_SIZE - OVERLAP_SIZE:]
+
+        # Process final leftover buffer
+        if buffer:
+            try:
+                chunker = fastcdc.fastcdc(bytes(buffer), chunksize, chunksize, chunksize, hf=hash_function)
+                for c in chunker:
+                    try:
+                        h = int(c.hash, 16)
+                        if h % m == x:
+                            with lock:
+                                config.fingerprints.add(h)
+                    except Exception as e:
+                        logging.error(f"Error processing final chunk hash: {e}")
+            except Exception as e:
+                logging.error(f"Final FastCDC failed: {e}")
+                logging.error(traceback.format_exc())
+
+        # Stats update
         with lock:
             config.files_scanned += 1
             if sample_size == -1:
-                config.bytes_total += len(part_data)
-
-            config.chunk_count += len(part_data) // chunksize
-            if len(part_data) % chunksize != 0:
+                config.bytes_total += processed_bytes
+            config.chunk_count += processed_bytes // chunksize
+            if processed_bytes % chunksize != 0:
                 config.chunk_count += 1
-
-        pbar.update(len(part_data))
-
-        with lock:
             config.files_skipped += 1
 
     except Exception as e:
-        logging.error(f"Failed to process raw disk {disk}: {e}")
+        logging.error(f"Failed to process raw disk {disk}: {repr(e)}")
+        logging.error(traceback.format_exc())
 
     finally:
         if handle is not None:
             os.close(handle)
-
