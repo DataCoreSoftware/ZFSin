@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import logging
 
-#logging.basicConfig(level=logging.debug)
+logging.basicConfig(level=logging.DEBUG)
 
 from fastcdc.utils import DefaultHelp, supported_hashes
 
@@ -91,6 +91,12 @@ def iter_files(path, recursive=False):
     default=False,
 )
 @click.option(
+    "--skip-zeroes",
+    help="Skip all zero chunks when scanning raw disks",
+    is_flag=True,
+    default=False,
+)
+@click.option(
     "--nosampling",
     help="Use this option to get more accurate results. But it uses more memory",
     is_flag=True,
@@ -108,7 +114,7 @@ def iter_files(path, recursive=False):
     default=False,
     show_default=True
 )
-def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosampling, sample_size, isconfig):
+def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig):
     """
     Scan and report duplication.
     """
@@ -187,7 +193,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
                         #logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
-                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, lock)
+                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, skip_zeroes, lock)
                         #logging.debug(f"Submitted disk scan for {path}")
                         i += 1
 
@@ -196,10 +202,13 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
             with lock:
                 if sample_size != -1:
                     bytes_total = config.bytes_total
+                    
 
             #logging.debug(f"Unique chunks: {len(config.fingerprints)}")
             unique_chunks = set(config.fingerprints)
             bytes_unique = min(len(unique_chunks) * m * size, bytes_total)
+            zero_bytes_skipped = config.zero_bytes_skipped
+            bytes_actual_total = bytes_total - zero_bytes_skipped
 
             if bytes_total:
                 if bytes_unique:
@@ -211,10 +220,14 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                     results["unique_chunks"] = intcomma(len(unique_chunks))
                     click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
+                    click.echo("Zero Chunks Skipped:\t{}".format(intcomma(config.zero_chunks_skipped)))
+                    results["zero_chunks_skipped"] = naturalsize(config.zero_chunks_skipped)
+                    click.echo("Zero Data Skipped:\t{} bytes".format(config.zero_bytes_skipped))
+                    results["zero_data_skipped"] = naturalsize(config.zero_bytes_skipped, True)
                     click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
                     results["data_scanned"] = naturalsize(bytes_total, True)
-                    click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_total / bytes_unique))
-                    results["dedup_ratio"] = round(bytes_total / bytes_unique, 2)
+                    click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_actual_total / bytes_unique))
+                    results["dedup_ratio"] = round(bytes_actual_total / bytes_unique, 2)
                     click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
                     click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
@@ -224,7 +237,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, nosam
                     with open(os.path.join(outpath,output), "w") as outfile:
                         outfile.write(json.dumps(results, indent = 2))
                 else:
-                    print("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator")
+                    print("Too few unique chunks were detected. This could be due to: (1) high duplication, (2) insufficient sample size, (3) skipped zeroes, or (4) insufficient permissions.\nUse --nosampling option.\nOr skip --skip-zeroes option.\nOr try running the tool as administrator")
             else:
                 click.echo("No data.\n")
 
