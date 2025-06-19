@@ -15,7 +15,7 @@ OVERLAP_SIZE = 2 * 1024 * 1024          # 2MB overlap for chunk boundary safety
 
 logging.basicConfig(level=logging.DEBUG)
 
-def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, skip_zeroes, lock):
+def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, progress_queue, sample_size, skip_zeroes, lock):
     """
     Orchestrates the parallel processing of a disk by dividing it based on the number of threads
     and assigning each part to a thread for processing.
@@ -54,7 +54,7 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
                             hash_function,
                             m,
                             x,
-                            pbar,
+                            progress_queue,
                             skip_zeroes,
                             lock
                         )
@@ -69,7 +69,7 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
             except Exception as e:
                 logging.error(f"Error in thread execution: {e}")
 
-def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_function, m, x, pbar, skip_zeroes, lock):
+def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_function, m, x, progress_queue, skip_zeroes, lock):
     handle = None
     with lock:
         if disk not in config.last_offsets_real:
@@ -101,7 +101,10 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                         config.zero_chunks_skipped += 1
                         config.zero_bytes_skipped += len(chunk)
                         config.last_offsets_zero[disk] = start_offset + processed_bytes + len(chunk)
-                        pbar.update(len(chunk))
+                    progress_queue.put((len(chunk), {
+                        "dedup_ratio": round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+                    }))
+
 
                     #logging.debug(f"[ZERO SKIP] Offset: {start_offset + processed_bytes}, Size: {len(chunk)}")
                     processed_bytes += len(chunk)
@@ -109,8 +112,10 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                 else:
                     buffer.extend(chunk)
                     processed_bytes += len(chunk)
-                    with lock:
-                        pbar.update(len(chunk))
+                    progress_queue.put((len(chunk), {
+                        "dedup_ratio": round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+                    }))
+
                     #logging.debug(f"[READ] Offset: {start_offset + processed_bytes - len(chunk)}, Size: {len(chunk)}")
             except Exception as e:
                 logging.error(f"Error reading at offset {start_offset + processed_bytes}: {e}")
