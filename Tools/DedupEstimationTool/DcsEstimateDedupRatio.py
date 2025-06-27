@@ -22,6 +22,41 @@ from fastcdc.utils import DefaultHelp, supported_hashes
 # Create a lock for thread-safe access to shared resources
 lock = threading.Lock()
 
+import queue
+import time
+
+progress_queue = queue.Queue()
+stop_event = threading.Event()
+
+def progress_updater(pbar, progress_queue, stop_event, interval=1.0):
+
+    last_time = time.time()
+    pending = 0
+    latest_postfix = {}
+    last_postfix = {}
+
+    while not stop_event.is_set() or not progress_queue.empty():
+        try:
+            while True:
+                delta, postfix = progress_queue.get_nowait()
+                pending += delta
+                if postfix:
+                    latest_postfix.update(postfix)
+        except queue.Empty:
+            pass
+
+        now = time.time()
+        if now - last_time >= interval or stop_event.is_set():
+            if pending > 0:
+                pbar.update(pending)
+                if latest_postfix != last_postfix:
+                    pbar.set_postfix(latest_postfix, refresh=True)
+                    last_postfix = latest_postfix.copy()
+                pending = 0
+            last_time = now
+
+        time.sleep(0.1)
+
 def iter_files(path, recursive=False):
     if recursive:
         for root, subdirs, files in os.walk(path):
@@ -114,7 +149,13 @@ def iter_files(path, recursive=False):
     default=False,
     show_default=True
 )
-def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig):
+@click.option(
+    "--suppress-result",
+    help="Use this option to suppress final result on screen. Useful for running from a script. But this will not hide the progress bar.",
+    is_flag=True,
+    default=False
+)
+def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig, suppress_result):
     """
     Scan and report duplication.
     """
@@ -140,7 +181,6 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
         if sample_size != -1:
             sample_size = sample_size * 1024 * 1024 * 1024
 
-        supported = supported_hashes()
         hf = getattr(hashlib, hash_function)
 
         path_count = len(paths) # number of input path
@@ -188,14 +228,18 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
             #logging.debug(f"Starting disk scan now... calling ThreadPoolExecutor with max_workers={path_count}")
 
             i = 0
-            bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}]'
-            with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False) as pbar:
+            bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}{postfix}]'
+            with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit="B", ascii=' #', bar_format=bar_format, leave=False) as pbar:
+                updater_thread = threading.Thread(target=progress_updater, args=(pbar, progress_queue, stop_event))
+                updater_thread.start()
+
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
-                        #logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
-                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], pbar, sample_size, skip_zeroes, lock)
-                        #logging.debug(f"Submitted disk scan for {path}")
+                        executor.submit(process_disk, path, size, hf, m, x, max_threads, sizes[i], progress_queue, sample_size, skip_zeroes, lock)
                         i += 1
+
+                stop_event.set()
+                updater_thread.join()
 
             t.stop()
 
@@ -216,26 +260,26 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                     results['paths'] = list(paths)
                     time_taken = int(Timer.timers.mean("scan")) + 0.1
                     data_per_s = bytes_total / time_taken
-                    click.echo("Unique Chunks:\t{}".format(intcomma(len(unique_chunks))))
                     results["unique_chunks"] = intcomma(len(unique_chunks))
-                    click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
-                    click.echo("Zero Chunks Skipped:\t{}".format(intcomma(config.zero_chunks_skipped)))
-                    results["zero_chunks_skipped"] = naturalsize(config.zero_chunks_skipped)
-                    click.echo("Zero Data Skipped:\t{} bytes".format(config.zero_bytes_skipped))
-                    results["zero_data_skipped"] = naturalsize(config.zero_bytes_skipped, True)
-                    click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
-                    results["data_scanned"] = naturalsize(bytes_total, True)
-                    click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_actual_total / bytes_unique))
+                    results["non_zero_data_allocated"] = naturalsize(bytes_actual_total, True)
+                    results["space_scanned"] = naturalsize(bytes_total, True)
                     results["dedup_ratio"] = round(bytes_actual_total / bytes_unique, 2)
-                    click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
-                    click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                     
                     # Saving the output in a json file.
                     output = "DedupEstimationResult.txt"
                     with open(os.path.join(outpath,output), "w") as outfile:
                         outfile.write(json.dumps(results, indent = 2))
+
+                    if not suppress_result:
+                        click.echo("Unique Chunks:\t{}".format(intcomma(len(unique_chunks))))
+                        click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
+                        click.echo("Non-Zero Data Allocated:\t{}".format(naturalsize(bytes_actual_total, True)))
+                        click.echo("Space scanned:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_actual_total / bytes_unique))
+                        click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
+                        click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                 else:
                     print("Too few unique chunks were detected. This could be due to: (1) high duplication, (2) insufficient sample size, (3) skipped zeroes, or (4) insufficient permissions.\nUse --nosampling option.\nOr skip --skip-zeroes option.\nOr try running the tool as administrator")
             else:
@@ -271,12 +315,17 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
             t = Timer("scan", logger=None)
             t.start()
 
-            bar_format = '{l_bar}{bar}| {n_fmt}/{total_fmt} [time elapsed: {elapsed}, time remaining: {remaining}]'
+            bar_format = '{l_bar}{bar}| {n_fmt}/{total_fmt} [time elapsed: {elapsed}, time remaining: {remaining}{postfix}]'
             with tqdm(total=files_to_scan, desc="Estimating dedup ratio", unit=" file", ascii=' #', bar_format=bar_format, leave=False) as pbar:
                 # seperately process files in each input path
+                updater_thread = threading.Thread(target=progress_updater, args=(pbar, progress_queue, stop_event))
+                updater_thread.start()
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
-                        executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, pbar, sample_size)
+                        executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, progress_queue, sample_size)
+
+                stop_event.set()
+                updater_thread.join()
 
             t.stop()
 
@@ -294,33 +343,39 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                     time_taken = int(Timer.timers.mean("scan")) + 0.1
                     data_per_s = bytes_total / time_taken
                     results["files"] = intcomma(file_count)
-                    click.echo("Unique Chunks:\t{}".format(intcomma(chunks_unique)))
                     results["unique_chunks"] = intcomma(chunks_unique)
-                    click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
-                    click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
-                    results["data_scanned"] = naturalsize(bytes_total, True)
-                    click.echo("DeDupe Ratio:\t{:.2f}".format(dedup_ratio))
+                    results["non_zero_data_allocated"] = naturalsize(bytes_total, True)
+                    results["space_scanned"] = naturalsize(bytes_total, True)
                     results["dedup_ratio"] = round(dedup_ratio, 2)
-                    click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
-                    click.echo("Files Skipped:\t{}".format(intcomma(config.files_skipped)))
                     results["files_skippped"] = config.files_skipped
-                    click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
 
                     output = "DedupEstimationResult.txt"
                     with open(os.path.join(outpath, output), "w") as outfile:
                         outfile.write(json.dumps(results, indent=2))
+
+                    if not suppress_result:
+                        click.echo("Unique Chunks:\t{}".format(intcomma(chunks_unique)))
+                        click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
+                        click.echo("Non-Zero Data Allocated:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("Space scanned:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("DeDupe Ratio:\t{:.2f}".format(dedup_ratio))
+                        click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
+                        click.echo("Files Skipped:\t{}".format(intcomma(config.files_skipped)))
+                        click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                 else:
                     click.echo("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator if admin privileges are required to read the files")
                 if sample_size != -1:
-                    click.echo("\nIf the file sizes exceed the sample size, the data scanned will be less than the sample size. To scan more data, increase the sample size")
+                    click.echo("\nIf the file sizes exceed the sample size, the space scanned will be less than the sample size. To scan more data, increase the sample size")
             else:
                 click.echo("No data or cannot access the files.\n")
         return 0
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         return 2
+    finally:
+        pbar.close()
 
 
 if __name__ == "__main__":
