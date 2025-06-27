@@ -326,6 +326,9 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                     for path in paths:
                         executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, pbar, sample_size, progress_queue)
 
+                stop_event.set()
+                updater_thread.join()
+
             t.stop()
 
             with lock:
@@ -373,6 +376,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         return 2
+    finally:
+        pbar.close()
 
 
 if __name__ == "__main__":
