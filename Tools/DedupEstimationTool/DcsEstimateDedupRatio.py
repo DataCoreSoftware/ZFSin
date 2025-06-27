@@ -324,7 +324,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                 updater_thread.start()
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
-                        executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, pbar, sample_size, progress_queue)
+                        executor.submit(process_path, path, recursive, size, hf, m, x, max_threads, progress_queue, sample_size)
 
                 stop_event.set()
                 updater_thread.join()
