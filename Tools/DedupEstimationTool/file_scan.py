@@ -69,7 +69,7 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pb
     """
     Process the file and add the hash of unique chunks of the file into the global fingerprints.
     """
-    logging.debug(f"Thread {threading.current_thread().name} started processing file {file}.")
+    #logging.debug(f"Thread {threading.current_thread().name} started processing file {file}.")
     try:
         chunker = fastcdc.fastcdc(file, chunksize, chunksize, chunksize, hf=hash_function)
     except Exception as e:
@@ -103,6 +103,6 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pb
             }
         ))
 
-    logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
+    #logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
 
 
