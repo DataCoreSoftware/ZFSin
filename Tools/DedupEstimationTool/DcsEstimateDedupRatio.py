@@ -28,19 +28,17 @@ import time
 progress_queue = queue.Queue()
 stop_event = threading.Event()
 
-def progress_updater(pbar, q, stop_event, interval=1.0):
-    import time
-    import queue
+def progress_updater(pbar, progress_queue, stop_event, interval=1.0):
 
     last_time = time.time()
     pending = 0
     latest_postfix = {}
     last_postfix = {}
 
-    while not stop_event.is_set() or not q.empty():
+    while not stop_event.is_set() or not progress_queue.empty():
         try:
             while True:
-                delta, postfix = q.get_nowait()
+                delta, postfix = progress_queue.get_nowait()
                 pending += delta
                 if postfix:
                     latest_postfix.update(postfix)
