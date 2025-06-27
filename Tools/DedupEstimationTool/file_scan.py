@@ -65,7 +65,6 @@ def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar,
             for file in iter_files(path, recursive):
                 executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, pbar, progress_queue).add_done_callback(handler)
 
-
 def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pbar, progress_queue):
     """
     Process the file and add the hash of unique chunks of the file into the global fingerprints.

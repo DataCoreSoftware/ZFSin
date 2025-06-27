@@ -59,7 +59,6 @@ def progress_updater(pbar, q, stop_event, interval=1.0):
 
         time.sleep(0.1)
 
-
 def iter_files(path, recursive=False):
     if recursive:
         for root, subdirs, files in os.walk(path):
@@ -243,7 +242,6 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
 
                 stop_event.set()
                 updater_thread.join()
-
 
             t.stop()
 
