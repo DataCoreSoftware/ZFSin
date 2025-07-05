@@ -96,21 +96,22 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                 if not chunk:
                     break
                 # If skip-zeroes is on and full buffer is zero, skip ahead
+                size_of_chunk_read = len(chunk)
                 if skip_zeroes and chunk.count(0) == len(chunk):
                     with lock:
                         config.zero_chunks_skipped += 1
-                        config.zero_bytes_skipped += len(chunk)
-                        config.last_offsets_zero[disk] = start_offset + processed_bytes + len(chunk)
-                        pbar.update(len(chunk))
+                        config.zero_bytes_skipped += size_of_chunk_read
+                        config.last_offsets_zero[disk] = start_offset + processed_bytes + size_of_chunk_read
+                        pbar.update(size_of_chunk_read)
 
                     #logging.debug(f"[ZERO SKIP] Offset: {start_offset + processed_bytes}, Size: {len(chunk)}")
-                    processed_bytes += len(chunk)
+                    processed_bytes += size_of_chunk_read
                     continue
                 else:
-                    buffer.extend(chunk)
-                    processed_bytes += len(chunk)
+                    buffer += chunk
+                    processed_bytes += size_of_chunk_read
                     with lock:
-                        pbar.update(len(chunk))
+                        pbar.update(size_of_chunk_read)
                     #logging.debug(f"[READ] Offset: {start_offset + processed_bytes - len(chunk)}, Size: {len(chunk)}")
             except Exception as e:
                 logging.error(f"Error reading at offset {start_offset + processed_bytes}: {e}")
@@ -169,6 +170,9 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                 f"Chunks: {config.chunk_count} | Unique: {len(config.fingerprints)} | "
                 f"Zero Skipped: {config.zero_chunks_skipped} ({naturalsize(config.zero_bytes_skipped)})"
             )'''
+            pbar.set_postfix( {
+                        "dedup_ratio": round(config.bytes_total / min(len(config.fingerprints) * m * chunksize, config.bytes_total), 2)
+                    }, refresh=True)
 
     except Exception as e:
         logging.error(f"Failed to process raw disk {disk}: {repr(e)}")
