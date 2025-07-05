@@ -9,13 +9,13 @@ from humanize import naturalsize
 
 from collections import defaultdict
 
-READ_BLOCK_SIZE = 1024 * 1024           # 1MB read chunks
 FASTCDC_WINDOW_SIZE = 16 * 1024 * 1024  # 16MB window for CDC
 OVERLAP_SIZE = 2 * 1024 * 1024          # 2MB overlap for chunk boundary safety
+ZERO_SKIP_GRANULARITY = 1024 * 1024  # 1MB
 
 logging.basicConfig(level=logging.DEBUG)
 
-def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, skip_zeroes, lock):
+def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar, sample_size, skip_zeroes, lock, read_block_size_mb):
     """
     Orchestrates the parallel processing of a disk by dividing it based on the number of threads
     and assigning each part to a thread for processing.
@@ -56,7 +56,8 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
                             x,
                             pbar,
                             skip_zeroes,
-                            lock
+                            lock,
+                            read_block_size_mb
                         )
                     )
                 except Exception as e:
@@ -69,7 +70,8 @@ def process_disk(disk, chunksize, hash_function, m, x, threads, disk_size, pbar,
             except Exception as e:
                 logging.error(f"Error in thread execution: {e}")
 
-def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_function, m, x, pbar, skip_zeroes, lock):
+def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_function, m, x, pbar, skip_zeroes, lock, read_block_size_mb):
+    READ_BLOCK_SIZE = read_block_size_mb * 1024 * 1024
     handle = None
     with lock:
         if disk not in config.last_offsets_real:
@@ -95,18 +97,22 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                 #logging.debug(f"Raw read of {to_read} bytes at offset {start_offset + processed_bytes}")
                 if not chunk:
                     break
-                # If skip-zeroes is on and full buffer is zero, skip ahead
+                # If skip-zeroes is on and 1MB sub-buffer is zero, skip ahead, for better granularity
                 size_of_chunk_read = len(chunk)
-                if skip_zeroes and chunk.count(0) == len(chunk):
-                    with lock:
-                        config.zero_chunks_skipped += 1
-                        config.zero_bytes_skipped += size_of_chunk_read
-                        config.last_offsets_zero[disk] = start_offset + processed_bytes + size_of_chunk_read
-                        pbar.update(size_of_chunk_read)
-
-                    #logging.debug(f"[ZERO SKIP] Offset: {start_offset + processed_bytes}, Size: {len(chunk)}")
+                if skip_zeroes:
+                    sub_offset = 0
+                    while sub_offset < size_of_chunk_read:
+                        sub_block = chunk[sub_offset:sub_offset + ZERO_SKIP_GRANULARITY]
+                        if sub_block.count(0) == len(sub_block):
+                            with lock:
+                                config.zero_chunks_skipped += 1
+                                config.zero_bytes_skipped += len(sub_block)
+                                config.last_offsets_zero[disk] = start_offset + processed_bytes + sub_offset + len(sub_block)
+                                pbar.update(len(sub_block))
+                        else:
+                            buffer += sub_block
+                        sub_offset += ZERO_SKIP_GRANULARITY
                     processed_bytes += size_of_chunk_read
-                    continue
                 else:
                     buffer += chunk
                     processed_bytes += size_of_chunk_read
