@@ -114,7 +114,13 @@ def iter_files(path, recursive=False):
     default=False,
     show_default=True
 )
-def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig):
+@click.option(
+    "--suppress-result",
+    help="Use this option to suppress final result on screen. Useful for running from a script. But this will not hide the progress bar.",
+    is_flag=True,
+    default=False
+)
+def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig, suppress_result):
     """
     Scan and report duplication.
     """
@@ -216,26 +222,27 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                     results['paths'] = list(paths)
                     time_taken = int(Timer.timers.mean("scan")) + 0.1
                     data_per_s = bytes_total / time_taken
-                    click.echo("Unique Chunks:\t{}".format(intcomma(len(unique_chunks))))
+
                     results["unique_chunks"] = intcomma(len(unique_chunks))
-                    click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
-                    click.echo("Zero Chunks Skipped:\t{}".format(intcomma(config.zero_chunks_skipped)))
-                    results["zero_chunks_skipped"] = naturalsize(config.zero_chunks_skipped)
-                    click.echo("Zero Data Skipped:\t{} bytes".format(config.zero_bytes_skipped))
-                    results["zero_data_skipped"] = naturalsize(config.zero_bytes_skipped, True)
-                    click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
-                    results["data_scanned"] = naturalsize(bytes_total, True)
-                    click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_actual_total / bytes_unique))
+                    results["non_zero_data_allocated"] = naturalsize(bytes_actual_total, True)
+                    results["space_scanned"] = naturalsize(bytes_total, True)
                     results["dedup_ratio"] = round(bytes_actual_total / bytes_unique, 2)
-                    click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
-                    click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                     
                     # Saving the output in a json file.
                     output = "DedupEstimationResult.txt"
                     with open(os.path.join(outpath,output), "w") as outfile:
                         outfile.write(json.dumps(results, indent = 2))
+
+                    if not suppress_result:
+                        click.echo("Unique Chunks:\t{}".format(intcomma(len(unique_chunks))))
+                        click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
+                        click.echo("Non-Zero Data Allocated:\t{}".format(naturalsize(bytes_actual_total, True)))
+                        click.echo("Space scanned:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("DeDupe Ratio:\t{:.2f}".format(bytes_actual_total / bytes_unique))
+                        click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
+                        click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                 else:
                     print("Too few unique chunks were detected. This could be due to: (1) high duplication, (2) insufficient sample size, (3) skipped zeroes, or (4) insufficient permissions.\nUse --nosampling option.\nOr skip --skip-zeroes option.\nOr try running the tool as administrator")
             else:
@@ -294,23 +301,27 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
                     time_taken = int(Timer.timers.mean("scan")) + 0.1
                     data_per_s = bytes_total / time_taken
                     results["files"] = intcomma(file_count)
-                    click.echo("Unique Chunks:\t{}".format(intcomma(chunks_unique)))
                     results["unique_chunks"] = intcomma(chunks_unique)
-                    click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
                     results["unique_data"] = naturalsize(bytes_unique, True)
-                    click.echo("Data scanned:\t{}".format(naturalsize(bytes_total, True)))
-                    results["data_scanned"] = naturalsize(bytes_total, True)
-                    click.echo("DeDupe Ratio:\t{:.2f}".format(dedup_ratio))
+                    results["non_zero_data_allocated"] = naturalsize(bytes_total, True)
+                    results["space_scanned"] = naturalsize(bytes_total, True)
                     results["dedup_ratio"] = round(dedup_ratio, 2)
-                    click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
                     results["throughput"] = str(naturalsize(data_per_s, True)) + "/s"
-                    click.echo("Files Skipped:\t{}".format(intcomma(config.files_skipped)))
-                    results["files_skippped"] = config.files_skipped
-                    click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
+                    results["files_skipped"] = config.files_skipped
 
                     output = "DedupEstimationResult.txt"
                     with open(os.path.join(outpath, output), "w") as outfile:
                         outfile.write(json.dumps(results, indent=2))
+                    
+                    if not suppress_result:
+                        click.echo("Unique Chunks:\t{}".format(intcomma(chunks_unique)))
+                        click.echo("Unique Data:\t{}".format(naturalsize(bytes_unique, True)))
+                        click.echo("Non-Zero Data Allocated:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("Space scanned:\t{}".format(naturalsize(bytes_total, True)))
+                        click.echo("DeDupe Ratio:\t{:.2f}".format(dedup_ratio))
+                        click.echo("Throughput:\t{}/s".format(naturalsize(data_per_s, True)))
+                        click.echo("Files Skipped:\t{}".format(intcomma(config.files_skipped)))
+                        click.echo("\nTime taken:\t{}".format(str(precisedelta(datetime.timedelta(seconds=time_taken)))))
                 else:
                     click.echo("Very less unique data / High Duplication.\nUse --nosampling option.\nOr try running the tool as administrator if admin privileges are required to read the files")
                 if sample_size != -1:
@@ -321,6 +332,8 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         return 2
+    finally:
+        pbar.close()
 
 
 if __name__ == "__main__":

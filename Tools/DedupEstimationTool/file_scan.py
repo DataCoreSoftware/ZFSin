@@ -81,10 +81,11 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pb
         return
     
     for chunk in chunker:
-        if int(chunk.hash, 16) % m == x:
+        h = int(chunk.hash, 16)
+        if h % m == x:
             # The chunk passes the filter. So add it to the fingerprints
             with lock:
-                config.fingerprints.add(int(chunk.hash, 16))
+                config.fingerprints.add(h)
 
     with lock:
         config.files_scanned += 1
@@ -94,8 +95,6 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pb
         config.chunk_count += filesize // chunksize
         if filesize % chunksize != 0:
             config.chunk_count += 1
-
-        pbar.update(1)  # Update the progress bar for each file processed
 
     logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
 
