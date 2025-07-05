@@ -38,12 +38,13 @@ def iter_files(path, recursive=False):
                         config.files_skipped += 1
 
 
-def process_path(path, recursive, chunksize, hash_function, m, x, threads, progress_queue, sample_size):
+def process_path(path, recursive, chunksize, hash_function, m, x, threads, pbar, sample_size):
     """
     Creates a threadpool to process the files in the given path.
     """
     def handler(fut):
-        pass
+        with lock:
+            pbar.update(1)
 
     if sample_size != -1:
         with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -55,7 +56,7 @@ def process_path(path, recursive, chunksize, hash_function, m, x, threads, progr
                 try:
                     f = open(file[0], 'r')
                     f.close()
-                    executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, progress_queue).add_done_callback(handler)
+                    executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, pbar).add_done_callback(handler)
                 except Exception as e:
                     with lock:
                         config.files_skipped += 1
@@ -63,18 +64,14 @@ def process_path(path, recursive, chunksize, hash_function, m, x, threads, progr
     else:
         with ThreadPoolExecutor(max_workers=threads) as executor:
             for file in iter_files(path, recursive):
-                executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, progress_queue).add_done_callback(handler)
+                executor.submit(process_file, file[0], file[1], chunksize, hash_function, m, x, sample_size, pbar).add_done_callback(handler)
 
-def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, progress_queue):
+
+def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pbar):
     """
     Process the file and add the hash of unique chunks of the file into the global fingerprints.
     """
-    #logging.debug(f"Thread {threading.current_thread().name} started processing file {file}.")
-    if filesize == 0:
-        with lock:
-            config.files_skipped += 1
-        logging.warning(f"Skipping empty file {file}")
-        return
+    logging.debug(f"Thread {threading.current_thread().name} started processing file {file}.")
     try:
         chunker = fastcdc.fastcdc(file, chunksize, chunksize, chunksize, hf=hash_function)
     except Exception as e:
@@ -98,15 +95,8 @@ def process_file(file, filesize, chunksize, hash_function, m, x, sample_size, pr
         if filesize % chunksize != 0:
             config.chunk_count += 1
 
-        dedup = round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+        pbar.update(1)  # Update the progress bar for each file processed
 
-        progress_queue.put((
-            1,  # file count increment
-            {
-                "dedup_ratio": dedup
-            }
-        ))
-
-    #logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
+    logging.debug(f"Thread {threading.current_thread().name} finished processing file {file}.")
 
 
