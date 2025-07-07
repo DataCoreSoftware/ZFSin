@@ -122,9 +122,9 @@ def iter_files(path, recursive=False):
 )
 @click.option(
     "--read-block-size",
-    help="Size of the disk read block in MB (default: 4). Higher values may improve performance on fast disks. Only for raw disk scanning.",
+    help="Size of the disk read block in MB (default: 1). Higher values may improve performance on fast disks. Only for raw disk scanning.",
     type=click.IntRange(1, 256),
-    default=4,
+    default=1,
     show_default=True
 )
 def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_zeroes, nosampling, sample_size, isconfig, suppress_result, read_block_size):
