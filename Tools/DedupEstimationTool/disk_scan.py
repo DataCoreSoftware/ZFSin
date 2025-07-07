@@ -103,12 +103,13 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                     sub_offset = 0
                     while sub_offset < size_of_chunk_read:
                         sub_block = chunk[sub_offset:sub_offset + ZERO_SKIP_GRANULARITY]
+                        with lock:
+                            pbar.update(len(sub_block))
                         if sub_block.count(0) == len(sub_block):
                             with lock:
                                 config.zero_chunks_skipped += 1
                                 config.zero_bytes_skipped += len(sub_block)
                                 config.last_offsets_zero[disk] = start_offset + processed_bytes + sub_offset + len(sub_block)
-                                pbar.update(len(sub_block))
                         else:
                             buffer += sub_block
                         sub_offset += ZERO_SKIP_GRANULARITY

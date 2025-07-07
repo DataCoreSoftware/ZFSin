@@ -202,7 +202,7 @@ def scan(paths, recursive, size, hash_function, outpath, max_threads, raw, skip_
 
             i = 0
             bar_format = '{l_bar}{bar}| [time elapsed: {elapsed}, time remaining: {remaining}]'
-            with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False, mininterval=0.5, miniters=1024*1024) as pbar:
+            with tqdm(total=bytes_total, desc="Estimating dedup ratio", unit=" path", ascii=' #', bar_format=bar_format, leave=False, mininterval=2, miniters=1024*1024) as pbar:
                 with ThreadPoolExecutor(max_workers=path_count) as executor:
                     for path in paths:
                         #logging.debug(f"Submitting disk scan for {path} with size {sizes[i]}")
