@@ -89,6 +89,7 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
         buffer = bytearray()
         processed_bytes = 0
         total_size = end_offset - start_offset
+        last_postfix_update_mb = -1
 
         while processed_bytes < total_size:
             try:
@@ -142,6 +143,12 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                                 else:
                                     config.bytes_total += c.length
                                     config.last_offsets_real[disk] = abs_offset + c.length
+                    if processed_bytes // (64 * 1024 * 1024) != last_postfix_update_mb:
+                        last_postfix_update_mb = processed_bytes // (64 * 1024 * 1024)
+                        with lock:
+                            pbar.set_postfix({
+                                "dedup_ratio": round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+                            })
                 except Exception as e:
                     logging.error(f"FastCDC failed on buffer: {e}")
                     logging.error(traceback.format_exc())
@@ -164,6 +171,12 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                                 else:
                                     config.bytes_total += c.length
                                     config.last_offsets_real[disk] = abs_offset + c.length
+                    if processed_bytes // (64 * 1024 * 1024) != last_postfix_update_mb:
+                        last_postfix_update_mb = processed_bytes // (64 * 1024 * 1024)
+                        with lock:
+                            pbar.set_postfix({
+                                "dedup_ratio": round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+                            })
             except Exception as e:
                 logging.error(f"Final FastCDC failed: {e}")
                 logging.error(traceback.format_exc())
@@ -176,9 +189,6 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
                 f"Chunks: {config.chunk_count} | Unique: {len(config.fingerprints)} | "
                 f"Zero Skipped: {config.zero_chunks_skipped} ({naturalsize(config.zero_bytes_skipped)})"
             )'''
-            pbar.set_postfix( {
-                        "dedup_ratio": round(config.bytes_total / min(len(config.fingerprints) * m * chunksize, config.bytes_total), 2)
-                    }, refresh=True)
 
     except Exception as e:
         logging.error(f"Failed to process raw disk {disk}: {repr(e)}")
@@ -187,6 +197,10 @@ def process_partial_disk(disk, start_offset, end_offset, chunksize, hash_functio
             config.files_skipped += 1
 
     finally:
+        with lock:
+            pbar.set_postfix({
+                "dedup_ratio": round(config.bytes_total / max(1, len(config.fingerprints) * m * chunksize), 2)
+            })
         #logging.debug(f"Finished processing {disk} from {start_offset} to {end_offset}, now config.bytes_total={config.bytes_total}, config.chunk_count={config.chunk_count}, config.zero_chunks_skipped={config.zero_chunks_skipped}, config.zero_bytes_skipped={config.zero_bytes_skipped}")
         if handle is not None:
             os.close(handle)
