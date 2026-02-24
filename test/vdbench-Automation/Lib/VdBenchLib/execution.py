@@ -654,17 +654,15 @@ class Test_ILDC:
             LogCreat().logger_info.info('************************'\
                                         'Test Started************************')
             time.sleep(30)
-            if self.config_dict['co_enabled'] == 'True':
-                self.update_config('False')
-                flag = 0
-            else:
+            if self.config_dict['co_enabled'] == 'False':
                 flag = self.test_enable_cap_opt_at_server()
                 if flag == 0:
                     self.update_config('True')
-                    print('Restarting system after CO is enabled')
-                    print('System will restart in 30 sec')
-                    time.sleep(30)
-                    os.system("shutdown /r /t 1")
+                    self.config_dict['co_enabled'] = 'True'
+            else:
+                self.update_config('False')
+                self.config_dict['co_enabled'] = 'False'
+                flag = 0                            
             if vd_name.lower() != "standard" and vd_name.lower() != "encrypted":
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
@@ -677,6 +675,11 @@ class Test_ILDC:
                     time.sleep(10)
                     #self.set_mirror_slog()
                     self.set_mirror_slog_api()
+            if self.config_dict['co_enabled'] == 'True':
+                print('Restarting system after CO is enabled')
+                print('System will restart in 30 sec')
+                time.sleep(30)
+                os.system("shutdown /r /t 1")           
             if flag == 0:
                 time.sleep(15)
                 self.create_diskpool(vd_name)
