@@ -120,12 +120,14 @@ class Test_ILDC:
             self.set_zvolsize(True)
         else:
             self.set_zvolsize(False)
-        if configur.get('first run', 'enryption_flag').strip() == 'True':
+        if configur.get('first run', 'enryption_flag').strip() == 'True' and configur.get('first run','co_enabled').strip() == 'False':
             self.encryption_setting('aes-256-gcm')
             LogCreat().logger_info.info('Encryption at zpool level set as aes-256-gcm')
-        else:
+        elif configur.get('first run','co_enabled').strip() == 'False':
             self.encryption_setting('none')
             LogCreat().logger_info.info('Encryption at zpool level set as None')
+        else:
+            LogCreat().logger_info.info('Skipping setting encryption at zpool as CO is already enabled')        
         if path.exists(configur.get('Vdbench run', 'vdbench_executable_path')) == False:
             flag = 1
             print("Invalid vdbench_executable_path set in configuration file")
@@ -145,6 +147,17 @@ class Test_ILDC:
         if flag == 0:
             flag = self.worklod_verify()
         return flag
+    def update_config(self, value):
+        '''
+        This method updates a value in config file
+        Arguments : Boolean flag
+        Returns : None
+        '''
+        configur = ConfigParser()
+        configur.read(r"../../../Config/VdBench_config/VDBench_config.ini")        
+        configur.set('first run', 'co_enabled', value)
+        with open(r"../../../Config/VdBench_config/VDBench_config.ini", "w") as configfile:
+            configur.write(configfile)
     def worklod_verify(self):
         '''
         Verify all workload file are exist or not
@@ -619,10 +632,11 @@ class Test_ILDC:
             vd_name = virtual_disk[0]
             workload = virtual_disk[1]
             flag_run = 1
-            file = open(r"../../../Config/Test.txt", "w+")
-            for _ in data[1:]:
-                file.write(_)
-            file.close()
+            if self.config_dict['co_enabled'] == 'True':
+                file = open(r"../../../Config/Test.txt", "w+")
+                for _ in data[1:]:
+                    file.write(_)
+                file.close()
         return vd_name, workload, flag_run
     def execute_test(self):
         '''
@@ -640,7 +654,15 @@ class Test_ILDC:
             LogCreat().logger_info.info('************************'\
                                         'Test Started************************')
             time.sleep(30)
-            flag = self.test_enable_cap_opt_at_server()
+            if self.config_dict['co_enabled'] == 'False':
+                flag = self.test_enable_cap_opt_at_server()
+                if flag == 0:
+                    self.update_config('True')
+                    self.config_dict['co_enabled'] = 'True'
+            else:
+                self.update_config('False')
+                self.config_dict['co_enabled'] = 'False'
+                flag = 0                            
             if vd_name.lower() != "standard" and vd_name.lower() != "encrypted":
                 if self.config_dict['slog_flag'] == 'True':
                     time.sleep(10)
@@ -653,6 +675,11 @@ class Test_ILDC:
                     time.sleep(10)
                     #self.set_mirror_slog()
                     self.set_mirror_slog_api()
+            if self.config_dict['co_enabled'] == 'True':
+                print('Restarting system after CO is enabled')
+                print('System will restart in 30 sec')
+                time.sleep(30)
+                os.system("shutdown /r /t 1")           
             if flag == 0:
                 time.sleep(15)
                 self.create_diskpool(vd_name)
